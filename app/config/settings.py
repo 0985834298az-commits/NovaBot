@@ -43,6 +43,7 @@ class Settings:
     admin_ids: frozenset[int]
     database_url: str
     log_level: str
+    nova_poshta_api_key: str | None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -59,10 +60,12 @@ class Settings:
             f"sqlite+aiosqlite:///{default_db_path}",
         )
         log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+        nova_poshta_api_key = os.getenv("NOVA_POSHTA_API_KEY", "").strip() or None
 
         return cls(
             bot_token=bot_token,
             admin_ids=admin_ids,
             database_url=database_url,
             log_level=log_level,
+            nova_poshta_api_key=nova_poshta_api_key,
         )

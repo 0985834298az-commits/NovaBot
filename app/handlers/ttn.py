@@ -11,12 +11,18 @@ from app.constants import (
     MSG_TTN_INVALID_ORDER_FORMAT,
     MSG_TTN_NEED_API_KEY,
     MSG_TTN_PRINT_LINK,
+    MSG_TTN_SENDER_NOT_CONFIGURED,
 )
 from app.handlers.states import TtnWizard, WaitingForApiKey
 from app.keyboards import build_main_menu_keyboard
 from app.nova_poshta import NovaPoshtaClient
 from app.nova_poshta.exceptions import NovaPoshtaError
 from app.repositories.user_repository import UserRepository
+from app.services.sender_cache import (
+    get_cached_sender_location,
+    get_sender_cache_error,
+    is_sender_cache_ready,
+)
 from app.services.ttn_service import (
     build_print_link,
     create_internet_document,
@@ -38,6 +44,11 @@ async def _get_api_key(
     return user.api_key
 
 
+def _sender_not_configured_message() -> str:
+    error = get_sender_cache_error() or "Sender location is not configured"
+    return MSG_TTN_SENDER_NOT_CONFIGURED.format(error=error)
+
+
 async def begin_ttn_wizard(
     message: Message,
     state: FSMContext,
@@ -45,6 +56,10 @@ async def begin_ttn_wizard(
 ) -> None:
     """Start single-message TTN creation."""
     if message.from_user is None:
+        return
+
+    if not is_sender_cache_ready():
+        await message.answer(_sender_not_configured_message())
         return
 
     user = await user_repository.get_user(message.from_user.id)
@@ -68,6 +83,14 @@ async def handle_ttn_order_input(
     if message.from_user is None or message.text is None:
         return
 
+    if not is_sender_cache_ready():
+        await state.clear()
+        await message.answer(
+            _sender_not_configured_message(),
+            reply_markup=build_main_menu_keyboard(),
+        )
+        return
+
     order = parse_ttn_order_message(message.text)
     if order is None:
         await message.answer(MSG_TTN_INVALID_ORDER_FORMAT)
@@ -85,10 +108,12 @@ async def handle_ttn_order_input(
     await message.answer(MSG_TTN_CREATING)
 
     try:
+        sender_location = get_cached_sender_location()
         async with NovaPoshtaClient(api_key) as client:
             wizard_data, sender_profile = await prepare_wizard_data_from_order(
                 client,
                 order,
+                sender_location,
             )
             document = await create_internet_document(
                 client,

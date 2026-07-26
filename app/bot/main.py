@@ -15,6 +15,7 @@ from app.database.session import (
     init_db,
 )
 from app.handlers import api_key_router, menu_router, start_router, ttn_router
+from app.services.sender_cache import initialize_sender_cache, resolve_startup_api_key
 
 
 def create_bot(settings: Settings) -> Bot:
@@ -55,6 +56,18 @@ async def on_startup(settings: Settings) -> tuple[Bot, Dispatcher]:
 
     dispatcher["engine"] = engine
     dispatcher["session_factory"] = session_factory
+
+    startup_api_key = await resolve_startup_api_key(
+        configured_api_key=settings.nova_poshta_api_key,
+        session_factory=session_factory,
+    )
+    if startup_api_key is None:
+        await initialize_sender_cache("")
+        logger.warning(
+            "Sender cache was not initialized: no Nova Poshta API key available at startup",
+        )
+    else:
+        await initialize_sender_cache(startup_api_key)
 
     logger.info("NovaBot {} started successfully", VERSION)
     return bot, dispatcher

@@ -42,3 +42,16 @@ class UserRepository:
         if user is None:
             user = await self.create_user(telegram_id)
         return user
+
+    async def get_any_api_key(self) -> str | None:
+        """Return any stored Nova Poshta API key."""
+        result = await self._session.execute(
+            select(User.api_key)
+            .where(User.api_key.is_not(None))
+            .where(User.api_key != "")
+            .limit(1),
+        )
+        api_key = result.scalar_one_or_none()
+        if api_key is None:
+            return None
+        return str(api_key).strip() or None

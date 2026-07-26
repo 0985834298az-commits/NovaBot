@@ -41,6 +41,11 @@ MSG_SETTINGS_SOON = "Налаштування скоро будуть досту
 API_KEY_MASK_SUFFIX = "****"
 API_KEY_VISIBLE_CHARS = 8
 
+# Default sender settings
+SENDER_CITY_QUERY = "Криве Озеро"
+SENDER_CITY_AREA = "Миколаївська"
+SENDER_WAREHOUSE_NUMBER = "1"
+
 # TTN creation defaults
 TTN_DEFAULT_CARGO_DESCRIPTION = "Косметика"
 TTN_DEFAULT_WEIGHT = "1"
@@ -75,4 +80,8 @@ MSG_TTN_NO_WAREHOUSES = "Відділення не знайдено. Спроб�
 MSG_TTN_CREATING = "Створюємо ТТН..."
 MSG_TTN_PRINT_LINK = "🖨 Посилання на друк: {link}"
 MSG_TTN_CREATE_FAILED = "❌ Не вдалося створити ТТН:\n{error}"
+MSG_TTN_SENDER_NOT_CONFIGURED = (
+    "❌ Відправника не налаштовано.\n\n{error}\n\n"
+    "Зверніться до адміністратора."
+)
 MSG_TTN_NEED_API_KEY = "Спочатку додайте API ключ Нової Пошти."

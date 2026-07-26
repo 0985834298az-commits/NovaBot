@@ -118,47 +118,13 @@ def find_warehouse_by_number(
     return None
 
 
-async def fetch_sender_location(
-    client: NovaPoshtaClient,
-    sender_ref: str,
-) -> dict[str, dict[str, str]]:
-    """Load the sender city and warehouse from counterparty addresses."""
-    response = await client.get_counterparty_addresses(sender_ref)
-    if response.get("success") is not True:
-        errors = [str(error) for error in response.get("errors") or []]
-        msg = "; ".join(errors) or "Failed to load sender addresses"
-        raise NovaPoshtaApiError(msg, errors=errors)
-
-    addresses = response.get("data") or []
-    for address in addresses:
-        if not isinstance(address, dict):
-            continue
-
-        warehouse_ref = str(address.get("Ref") or "")
-        city_ref = str(address.get("CityRef") or address.get("DeliveryCity") or "")
-        if not warehouse_ref or not city_ref:
-            continue
-
-        return {
-            "sender_city": {"delivery_city": city_ref},
-            "sender_warehouse": {
-                "ref": warehouse_ref,
-                "number": str(address.get("WarehouseIndex") or address.get("Number") or ""),
-                "description": str(address.get("Description") or address.get("Address") or ""),
-            },
-        }
-
-    msg = "Sender warehouse address was not found for this API key"
-    raise NovaPoshtaApiError(msg)
-
-
 async def prepare_wizard_data_from_order(
     client: NovaPoshtaClient,
     order: TtnOrderInput,
+    sender_location: dict[str, dict[str, str]],
 ) -> tuple[dict[str, Any], dict[str, str]]:
     """Resolve API data required to create a TTN from a parsed order."""
     sender_profile = await fetch_sender_profile(client)
-    sender_location = await fetch_sender_location(client, sender_profile["ref"])
 
     city_response = await client.search_settlements(order.city_query)
     settlements = parse_settlements(city_response)
