@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 import aiohttp
@@ -11,7 +12,7 @@ from app.nova_poshta.constants import (
     API_URL,
     DEFAULT_TIMEOUT_SECONDS,
     METHOD_GET_STATUS,
-    MODEL_COMMON_GENERAL,
+    MODEL_COMMON,
 )
 from app.nova_poshta.exceptions import (
     NovaPoshtaError,
@@ -81,26 +82,22 @@ class NovaPoshtaClient:
         session = await self._ensure_session()
 
         logger.debug(
-            "Nova Poshta request: model={} method={}",
-            model_name,
-            called_method,
+            "Nova Poshta request payload: {}",
+            json.dumps(payload, ensure_ascii=False),
         )
 
         try:
             async with session.post(API_URL, json=payload) as response:
                 raw_body = await response.text()
-
-                if response.status != 200:
-                    msg = f"Nova Poshta API returned HTTP {response.status}"
-                    logger.error("{}: {}", msg, raw_body[:500])
-                    raise NovaPoshtaTransportError(
-                        msg,
-                        status_code=response.status,
-                    )
+                logger.info(
+                    "Nova Poshta raw response (HTTP {}): {}",
+                    response.status,
+                    raw_body,
+                )
 
                 try:
-                    data: dict[str, Any] = await response.json(content_type=None)
-                except aiohttp.ContentTypeError as exc:
+                    data = json.loads(raw_body)
+                except json.JSONDecodeError as exc:
                     msg = "Nova Poshta API returned a non-JSON response"
                     logger.error("{}: {}", msg, raw_body[:500])
                     raise NovaPoshtaResponseError(msg) from exc
@@ -109,6 +106,14 @@ class NovaPoshtaClient:
                     msg = "Nova Poshta API returned an unexpected JSON payload"
                     logger.error("{}: {!r}", msg, data)
                     raise NovaPoshtaResponseError(msg)
+
+                if response.status >= 500:
+                    msg = f"Nova Poshta API returned HTTP {response.status}"
+                    logger.error("{}: {}", msg, raw_body[:500])
+                    raise NovaPoshtaTransportError(
+                        msg,
+                        status_code=response.status,
+                    )
 
                 if data.get("success") is True:
                     logger.info(
@@ -139,12 +144,11 @@ class NovaPoshtaClient:
 
     async def get_status(self) -> dict[str, Any]:
         """
-        Call CommonGeneral/getStatus and return parsed JSON.
+        Call Common/getServiceTypes and return parsed JSON.
 
-        API key will be loaded from the database in a later module.
-        For now, pass the key when creating the client.
+        Nova Poshta uses this lightweight reference method to verify API access.
         """
-        return await self._call(MODEL_COMMON_GENERAL, METHOD_GET_STATUS)
+        return await self._call(MODEL_COMMON, METHOD_GET_STATUS)
 
     async def validate_api_key(self) -> bool:
         """Return True when the configured API key is valid."""
@@ -154,13 +158,15 @@ class NovaPoshtaClient:
             logger.warning("Nova Poshta API key validation failed due to transport error")
             return False
 
+        errors = [str(error) for error in response.get("errors") or []]
+        if any("API key incorrect" in error for error in errors):
+            logger.warning("Nova Poshta API key is invalid: errors={}", errors)
+            return False
+
         is_valid = response.get("success") is True
         if is_valid:
             logger.info("Nova Poshta API key is valid")
         else:
-            logger.warning(
-                "Nova Poshta API key is invalid: errors={}",
-                response.get("errors"),
-            )
+            logger.warning("Nova Poshta API key validation failed: errors={}", errors)
 
         return is_valid

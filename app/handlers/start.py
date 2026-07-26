@@ -6,6 +6,7 @@ from aiogram.types import Message
 from app.constants import ASK_API_KEY_MESSAGE, START_MESSAGE
 from app.handlers.states import WaitingForApiKey
 from app.keyboards import build_main_menu_keyboard
+from app.nova_poshta import NovaPoshtaClient
 from app.repositories.user_repository import UserRepository
 
 router = Router(name="start")
@@ -24,12 +25,16 @@ async def handle_start(
     user = await user_repository.get_or_create_user(message.from_user.id)
 
     if user.api_key:
-        await state.clear()
-        await message.answer(
-            START_MESSAGE,
-            reply_markup=build_main_menu_keyboard(),
-        )
-        return
+        async with NovaPoshtaClient(user.api_key) as client:
+            is_valid = await client.validate_api_key()
+
+        if is_valid:
+            await state.clear()
+            await message.answer(
+                START_MESSAGE,
+                reply_markup=build_main_menu_keyboard(),
+            )
+            return
 
     await state.set_state(WaitingForApiKey.api_key)
     await message.answer(ASK_API_KEY_MESSAGE)
