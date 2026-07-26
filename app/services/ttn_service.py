@@ -159,6 +159,97 @@ async def prepare_wizard_data_from_order(
     }, sender_profile
 
 
+def build_wizard_data_from_saved_recipient(
+    recipient: Any,
+    cod_amount: str,
+    sender_location: dict[str, dict[str, str]],
+) -> dict[str, Any]:
+    """Build TTN wizard data from a saved recipient record."""
+    return {
+        **sender_location,
+        "recipient_name": recipient.full_name,
+        "recipient_phone": recipient.phone,
+        "recipient_city": {
+            "ref": recipient.city_ref,
+            "delivery_city": recipient.city_ref,
+            "name": recipient.city_name,
+            "area": "",
+            "region": "",
+            "settlement_type": "",
+        },
+        "recipient_warehouse": {
+            "ref": recipient.warehouse_ref,
+            "number": recipient.warehouse_number,
+            "description": f"№{recipient.warehouse_number}",
+        },
+        "cargo_description": TTN_DEFAULT_CARGO_DESCRIPTION,
+        "weight": TTN_DEFAULT_WEIGHT,
+        "declared_cost": TTN_DEFAULT_DECLARED_COST,
+        "cod_amount": cod_amount,
+    }
+
+
+def extract_recipient_save_fields(wizard_data: dict[str, Any]) -> dict[str, str]:
+    """Extract recipient address book fields from wizard data."""
+    recipient_city = wizard_data["recipient_city"]
+    recipient_warehouse = wizard_data["recipient_warehouse"]
+    return {
+        "full_name": str(wizard_data["recipient_name"]),
+        "phone": str(wizard_data["recipient_phone"]),
+        "city_name": str(recipient_city["name"]),
+        "city_ref": str(recipient_city["delivery_city"]),
+        "warehouse_number": str(recipient_warehouse["number"]),
+        "warehouse_ref": str(recipient_warehouse["ref"]),
+    }
+
+
+async def resolve_recipient_city_and_warehouse(
+    client: NovaPoshtaClient,
+    *,
+    city_query: str,
+    warehouse_number: str,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Resolve recipient city and warehouse refs from user input."""
+    city_response = await client.search_settlements(city_query)
+    settlements = parse_settlements(city_response)
+    recipient_city = find_best_settlement(settlements, city_query)
+    if recipient_city is None:
+        msg = "Recipient city was not found"
+        raise NovaPoshtaApiError(msg)
+
+    warehouse_response = await client.get_warehouses(
+        recipient_city["delivery_city"],
+        find_by_string=warehouse_number,
+    )
+    warehouses = parse_warehouses(warehouse_response)
+    recipient_warehouse = find_warehouse_by_number(warehouses, warehouse_number)
+    if recipient_warehouse is None:
+        msg = "Recipient warehouse was not found"
+        raise NovaPoshtaApiError(msg)
+
+    return recipient_city, recipient_warehouse
+
+
+def format_phone_display(phone: str) -> str:
+    """Format stored phone numbers for display."""
+    normalized = normalize_phone(phone)
+    if normalized is None:
+        return phone
+    if normalized.startswith("380") and len(normalized) == 12:
+        return f"0{normalized[3:]}"
+    return normalized
+
+
+def format_recipient_card(recipient: Any) -> str:
+    """Format a saved recipient for Telegram display."""
+    return (
+        f"👤 {recipient.full_name}\n"
+        f"📞 {format_phone_display(recipient.phone)}\n"
+        f"🏙 {recipient.city_name}\n"
+        f"🏢 №{recipient.warehouse_number}"
+    )
+
+
 async def create_internet_document(
     client: NovaPoshtaClient,
     wizard_data: dict[str, Any],

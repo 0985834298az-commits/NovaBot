@@ -9,14 +9,15 @@ from app.constants import (
     BTN_MY_WAYBILLS,
     BTN_RECIPIENTS,
     BTN_SETTINGS,
-    MSG_RECIPIENTS_EMPTY,
     MSG_SETTINGS_SOON,
     MSG_WAYBILLS_EMPTY,
     API_KEY_VISIBLE_CHARS,
 )
+from app.handlers.recipients import begin_recipients_list
 from app.handlers.states import WaitingForApiKey
 from app.handlers.ttn import begin_ttn_wizard
 from app.keyboards import build_main_menu_keyboard, build_replace_api_key_keyboard
+from app.repositories.recipient_repository import RecipientRepository
 from app.repositories.user_repository import UserRepository
 from app.utils.api_key import mask_api_key
 
@@ -45,13 +46,13 @@ async def handle_my_waybills(message: Message, state: FSMContext) -> None:
 
 
 @router.message(F.text == BTN_RECIPIENTS)
-async def handle_recipients(message: Message, state: FSMContext) -> None:
-    """Placeholder for recipients list."""
-    await state.clear()
-    await message.answer(
-        MSG_RECIPIENTS_EMPTY,
-        reply_markup=build_main_menu_keyboard(),
-    )
+async def handle_recipients(
+    message: Message,
+    state: FSMContext,
+    recipient_repository: RecipientRepository,
+) -> None:
+    """Show saved recipients address book."""
+    await begin_recipients_list(message, state, recipient_repository)
 
 
 @router.message(F.text == BTN_API_KEY)

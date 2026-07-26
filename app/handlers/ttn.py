@@ -17,6 +17,7 @@ from app.handlers.states import TtnWizard, WaitingForApiKey
 from app.keyboards import build_main_menu_keyboard
 from app.nova_poshta import NovaPoshtaClient
 from app.nova_poshta.exceptions import NovaPoshtaError
+from app.repositories.recipient_repository import RecipientRepository
 from app.repositories.user_repository import UserRepository
 from app.services.sender_cache import (
     get_cached_sender_location,
@@ -26,6 +27,7 @@ from app.services.sender_cache import (
 from app.services.ttn_service import (
     build_print_link,
     create_internet_document,
+    extract_recipient_save_fields,
     format_ttn_success_message,
     parse_ttn_order_message,
     prepare_wizard_data_from_order,
@@ -78,6 +80,7 @@ async def handle_ttn_order_input(
     message: Message,
     state: FSMContext,
     user_repository: UserRepository,
+    recipient_repository: RecipientRepository,
 ) -> None:
     """Parse one message and create a TTN immediately."""
     if message.from_user is None or message.text is None:
@@ -128,6 +131,11 @@ async def handle_ttn_order_input(
     ttn_number = str(document.get("IntDocNumber") or "—")
     reference = str(document.get("Ref") or "")
     delivery_cost = document.get("CostOnSite") or document.get("DocumentCost")
+
+    await recipient_repository.save_recipient(
+        telegram_user_id=message.from_user.id,
+        **extract_recipient_save_fields(wizard_data),
+    )
 
     await state.clear()
     await message.answer(
