@@ -1,13 +1,31 @@
 from aiogram import Router
 from aiogram.filters import CommandStart
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
-from app.constants import START_MESSAGE
+from app.constants import ASK_API_KEY_MESSAGE, START_MESSAGE
+from app.handlers.states import WaitingForApiKey
+from app.repositories.user_repository import UserRepository
 
 router = Router(name="start")
 
 
 @router.message(CommandStart())
-async def handle_start(message: Message) -> None:
-    """Welcome authorized users."""
-    await message.answer(START_MESSAGE)
+async def handle_start(
+    message: Message,
+    user_repository: UserRepository,
+    state: FSMContext,
+) -> None:
+    """Welcome authorized users and collect API key when missing."""
+    if message.from_user is None:
+        return
+
+    user = await user_repository.get_or_create_user(message.from_user.id)
+
+    if user.api_key:
+        await state.clear()
+        await message.answer(START_MESSAGE)
+        return
+
+    await state.set_state(WaitingForApiKey.api_key)
+    await message.answer(ASK_API_KEY_MESSAGE)

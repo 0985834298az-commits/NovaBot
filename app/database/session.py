@@ -35,6 +35,8 @@ def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSessi
 
 async def init_db(engine: AsyncEngine) -> None:
     """Create database tables if they do not exist."""
+    import app.models  # noqa: F401
+
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     async with engine.begin() as connection:

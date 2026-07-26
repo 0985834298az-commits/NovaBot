@@ -14,6 +14,7 @@ from app.nova_poshta.constants import (
     MODEL_COMMON_GENERAL,
 )
 from app.nova_poshta.exceptions import (
+    NovaPoshtaError,
     NovaPoshtaResponseError,
     NovaPoshtaTransportError,
 )

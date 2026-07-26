@@ -9,3 +9,7 @@ START_MESSAGE = (
     f"Version: {VERSION}\n\n"
     "Bot is ready."
 )
+
+ASK_API_KEY_MESSAGE = "Введіть API ключ Нової Пошти"
+API_KEY_SAVED_MESSAGE = "✅ API ключ успішно збережено."
+API_KEY_INVALID_MESSAGE = "❌ API ключ неправильний.\n\nСпробуйте ще раз."

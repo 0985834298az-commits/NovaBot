@@ -2,8 +2,10 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from loguru import logger
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.bot.middlewares import AuthorizationMiddleware
+from app.bot.middlewares.database import DatabaseMiddleware
 from app.bot.session import create_http_session
 from app.config.settings import Settings
 from app.constants import VERSION
@@ -12,7 +14,7 @@ from app.database.session import (
     create_session_factory,
     init_db,
 )
-from app.handlers import start_router
+from app.handlers import api_key_router, start_router
 
 
 def create_bot(settings: Settings) -> Bot:
@@ -24,13 +26,18 @@ def create_bot(settings: Settings) -> Bot:
     )
 
 
-def create_dispatcher(settings: Settings) -> Dispatcher:
+def create_dispatcher(
+    settings: Settings,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> Dispatcher:
     """Create dispatcher, register middleware, and attach routers."""
     dispatcher = Dispatcher()
     dispatcher.update.outer_middleware(
         AuthorizationMiddleware(settings.admin_ids),
     )
+    dispatcher.update.middleware(DatabaseMiddleware(session_factory))
     dispatcher.include_router(start_router)
+    dispatcher.include_router(api_key_router)
     return dispatcher
 
 
@@ -42,7 +49,7 @@ async def on_startup(settings: Settings) -> tuple[Bot, Dispatcher]:
     await init_db(engine)
 
     bot = create_bot(settings)
-    dispatcher = create_dispatcher(settings)
+    dispatcher = create_dispatcher(settings, session_factory)
 
     dispatcher["engine"] = engine
     dispatcher["session_factory"] = session_factory
