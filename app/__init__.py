@@ -1,0 +1,1 @@
+"""NovaBot application package."""
