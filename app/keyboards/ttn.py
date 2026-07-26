@@ -39,11 +39,12 @@ def build_warehouse_keyboard(
 ) -> InlineKeyboardMarkup:
     """Build inline keyboard for warehouse selection."""
     builder = InlineKeyboardBuilder()
-    for index, item in enumerate(items[:10]):
+    for item in items[:10]:
         label = item["description"] or f"№{item['number']}"
+        warehouse_ref = item["ref"]
         builder.button(
             text=label[:64],
-            callback_data=f"{CALLBACK_TTN_WAREHOUSE}:{side}:{index}",
+            callback_data=f"{CALLBACK_TTN_WAREHOUSE}:{side}:{warehouse_ref}",
         )
     builder.adjust(1)
     return builder.as_markup()

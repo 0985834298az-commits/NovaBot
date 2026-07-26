@@ -3,14 +3,12 @@ from __future__ import annotations
 from typing import Any
 
 from aiogram import F, Router
-from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from loguru import logger
 
 from app.constants import (
     ASK_API_KEY_MESSAGE,
-    BTN_CREATE_TTN,
     CALLBACK_TTN_CITY,
     CALLBACK_TTN_EDIT_FIELD,
     CALLBACK_TTN_REVIEW_CANCEL,
@@ -111,6 +109,31 @@ def _find_city_option(
     """Find a settlement option by its Ref."""
     for item in options:
         if item.get("ref") == city_ref:
+            return item
+    return None
+
+
+def _parse_warehouse_callback(callback_data: str) -> tuple[str, str] | None:
+    """Parse warehouse callback data: ttn:wh:{side}:{ref}."""
+    prefix = f"{CALLBACK_TTN_WAREHOUSE}:"
+    if not callback_data.startswith(prefix):
+        return None
+
+    payload = callback_data[len(prefix):]
+    side, _, warehouse_ref = payload.partition(":")
+    if side not in VALID_TTN_SIDES or not warehouse_ref:
+        return None
+
+    return side, warehouse_ref
+
+
+def _find_warehouse_option(
+    options: list[dict[str, str]],
+    warehouse_ref: str,
+) -> dict[str, str] | None:
+    """Find a warehouse option by its Ref."""
+    for item in options:
+        if item.get("ref") == warehouse_ref:
             return item
     return None
 
@@ -260,8 +283,7 @@ async def _search_warehouses(
     )
 
 
-@router.message(F.text == BTN_CREATE_TTN, StateFilter(None))
-async def start_ttn_wizard(
+async def begin_ttn_wizard(
     message: Message,
     state: FSMContext,
     user_repository: UserRepository,
@@ -379,12 +401,16 @@ async def handle_warehouse_select(callback: CallbackQuery, state: FSMContext) ->
     if callback.data is None or callback.message is None:
         return
 
-    _, side, index_raw = callback.data.split(":", maxsplit=2)
+    parsed = _parse_warehouse_callback(callback.data)
+    if parsed is None:
+        await callback.answer("Некоректний вибір", show_alert=True)
+        return
+
+    side, warehouse_ref = parsed
     data = await state.get_data()
     options: list[dict[str, str]] = data.get(f"{side}_warehouse_options", [])
-    try:
-        selected = options[int(index_raw)]
-    except (ValueError, IndexError):
+    selected = _find_warehouse_option(options, warehouse_ref)
+    if selected is None:
         await callback.answer("Некоректний вибір", show_alert=True)
         return
 
