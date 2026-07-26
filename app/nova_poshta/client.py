@@ -11,10 +11,21 @@ from loguru import logger
 from app.nova_poshta.constants import (
     API_URL,
     DEFAULT_TIMEOUT_SECONDS,
+    METHOD_GET_COUNTERPARTIES,
+    METHOD_GET_COUNTERPARTY_CONTACT_PERSONS,
     METHOD_GET_STATUS,
+    METHOD_GET_WAREHOUSES,
+    METHOD_SAVE,
+    METHOD_SEARCH_SETTLEMENTS,
+    MODEL_ADDRESS,
     MODEL_COMMON,
+    MODEL_COUNTERPARTY,
+    MODEL_INTERNET_DOCUMENT,
+    SEARCH_LIMIT,
+    SEARCH_PAGE,
 )
 from app.nova_poshta.exceptions import (
+    NovaPoshtaApiError,
     NovaPoshtaError,
     NovaPoshtaResponseError,
     NovaPoshtaTransportError,
@@ -143,11 +154,7 @@ class NovaPoshtaClient:
             raise NovaPoshtaTransportError(msg) from exc
 
     async def get_status(self) -> dict[str, Any]:
-        """
-        Call Common/getServiceTypes and return parsed JSON.
-
-        Nova Poshta uses this lightweight reference method to verify API access.
-        """
+        """Call Common/getServiceTypes and return parsed JSON."""
         return await self._call(MODEL_COMMON, METHOD_GET_STATUS)
 
     async def validate_api_key(self) -> bool:
@@ -170,3 +177,74 @@ class NovaPoshtaClient:
             logger.warning("Nova Poshta API key validation failed: errors={}", errors)
 
         return is_valid
+
+    async def search_settlements(self, city_name: str) -> dict[str, Any]:
+        """Search cities and settlements by name."""
+        return await self._call(
+            MODEL_ADDRESS,
+            METHOD_SEARCH_SETTLEMENTS,
+            {
+                "CityName": city_name,
+                "Limit": SEARCH_LIMIT,
+                "Page": SEARCH_PAGE,
+            },
+        )
+
+    async def get_warehouses(
+        self,
+        city_ref: str,
+        *,
+        find_by_string: str = "",
+    ) -> dict[str, Any]:
+        """Load warehouses for the selected city."""
+        return await self._call(
+            MODEL_ADDRESS,
+            METHOD_GET_WAREHOUSES,
+            {
+                "CityRef": city_ref,
+                "FindByString": find_by_string,
+                "Limit": SEARCH_LIMIT,
+                "Page": SEARCH_PAGE,
+            },
+        )
+
+    async def get_sender_counterparties(self) -> dict[str, Any]:
+        """Load sender counterparties linked to the API key."""
+        return await self._call(
+            MODEL_COUNTERPARTY,
+            METHOD_GET_COUNTERPARTIES,
+            {
+                "CounterpartyProperty": "Sender",
+                "Page": SEARCH_PAGE,
+            },
+        )
+
+    async def get_counterparty_contact_persons(
+        self,
+        counterparty_ref: str,
+    ) -> dict[str, Any]:
+        """Load contact persons for a counterparty."""
+        return await self._call(
+            MODEL_COUNTERPARTY,
+            METHOD_GET_COUNTERPARTY_CONTACT_PERSONS,
+            {
+                "Ref": counterparty_ref,
+                "Page": SEARCH_PAGE,
+            },
+        )
+
+    async def save_internet_document(
+        self,
+        method_properties: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Create an express waybill through InternetDocument.save."""
+        response = await self._call(
+            MODEL_INTERNET_DOCUMENT,
+            METHOD_SAVE,
+            method_properties,
+        )
+        if response.get("success") is not True:
+            errors = [str(error) for error in response.get("errors") or []]
+            msg = "; ".join(errors) or "Nova Poshta failed to create TTN"
+            raise NovaPoshtaApiError(msg, errors=errors)
+        return response

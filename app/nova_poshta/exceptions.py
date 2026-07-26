@@ -15,3 +15,11 @@ class NovaPoshtaTransportError(NovaPoshtaError):
 
 class NovaPoshtaResponseError(NovaPoshtaError):
     """Raised when the Nova Poshta response cannot be parsed or is invalid."""
+
+
+class NovaPoshtaApiError(NovaPoshtaError):
+    """Raised when Nova Poshta returns success=false."""
+
+    def __init__(self, message: str, *, errors: list[str] | None = None) -> None:
+        super().__init__(message)
+        self.errors = errors or []

@@ -6,11 +6,9 @@ from aiogram.types import Message
 from app.constants import (
     ASK_API_KEY_MESSAGE,
     BTN_API_KEY,
-    BTN_CREATE_TTN,
     BTN_MY_WAYBILLS,
     BTN_RECIPIENTS,
     BTN_SETTINGS,
-    MSG_CREATE_TTN_SOON,
     MSG_RECIPIENTS_EMPTY,
     MSG_SETTINGS_SOON,
     MSG_WAYBILLS_EMPTY,
@@ -22,15 +20,6 @@ from app.repositories.user_repository import UserRepository
 from app.utils.api_key import mask_api_key
 
 router = Router(name="menu")
-
-
-@router.message(F.text == BTN_CREATE_TTN, StateFilter(None))
-async def handle_create_ttn(message: Message) -> None:
-    """Placeholder for TTN creation."""
-    await message.answer(
-        MSG_CREATE_TTN_SOON,
-        reply_markup=build_main_menu_keyboard(),
-    )
 
 
 @router.message(F.text == BTN_MY_WAYBILLS, StateFilter(None))
