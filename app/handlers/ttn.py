@@ -26,7 +26,7 @@ from app.constants import (
     MSG_TTN_ASK_WEIGHT,
     MSG_TTN_CANCELLED,
     MSG_TTN_CREATE_FAILED,
-    MSG_TTN_CREATED,
+    MSG_TTN_CREATING,
     MSG_TTN_EDIT_PROMPT,
     MSG_TTN_INVALID_COST,
     MSG_TTN_INVALID_PHONE,
@@ -50,8 +50,10 @@ from app.repositories.user_repository import UserRepository
 from app.services.ttn_service import (
     build_print_link,
     build_save_properties,
+    extract_created_document,
     fetch_sender_profile,
     format_review_text,
+    format_ttn_success_message,
     normalize_phone,
     parse_declared_cost,
     parse_settlements,
@@ -157,6 +159,64 @@ async def _show_review(message: Message, state: FSMContext) -> None:
     )
 
 
+async def _create_ttn(
+    message: Message,
+    state: FSMContext,
+    user_repository: UserRepository,
+    *,
+    notify: bool = True,
+) -> None:
+    """Create TTN from collected wizard data."""
+    if message.from_user is None:
+        return
+
+    api_key = await _get_api_key(user_repository, message.from_user.id)
+    if api_key is None:
+        await state.clear()
+        await message.answer(
+            MSG_TTN_NEED_API_KEY,
+            reply_markup=build_main_menu_keyboard(),
+        )
+        return
+
+    data = await state.get_data()
+    if notify:
+        await message.answer(MSG_TTN_CREATING)
+
+    try:
+        async with NovaPoshtaClient(api_key) as client:
+            sender_profile = await fetch_sender_profile(client)
+            save_properties = build_save_properties(data, sender_profile)
+            logger.info("Creating TTN for user {}", message.from_user.id)
+            response = await client.save_internet_document(save_properties)
+    except NovaPoshtaError as exc:
+        logger.error("TTN creation failed for user {}: {}", message.from_user.id, exc)
+        await message.answer(
+            MSG_TTN_CREATE_FAILED.format(error=str(exc)),
+            reply_markup=build_main_menu_keyboard(),
+        )
+        return
+
+    document = extract_created_document(response)
+    ttn_number = str(document.get("IntDocNumber") or "—")
+    reference = str(document.get("Ref") or "—")
+    delivery_cost = document.get("CostOnSite") or document.get("DocumentCost")
+
+    await state.clear()
+    await message.answer(
+        format_ttn_success_message(
+            ttn_number=ttn_number,
+            reference=reference,
+            delivery_cost=delivery_cost,
+        ),
+        reply_markup=build_main_menu_keyboard(),
+    )
+
+    if reference != "—":
+        print_link = build_print_link(reference, api_key)
+        await message.answer(MSG_TTN_PRINT_LINK.format(link=print_link))
+
+
 async def _continue_after_edit(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     if data.get("edit_mode"):
@@ -198,7 +258,6 @@ async def _continue_after_edit(message: Message, state: FSMContext) -> None:
             TtnWizard.declared_cost,
             MSG_TTN_ASK_DECLARED_COST,
         ),
-        TtnWizard.declared_cost.state: (None, None),
     }
     next_step = transitions.get(current_state)
     if next_step is None:
@@ -208,6 +267,21 @@ async def _continue_after_edit(message: Message, state: FSMContext) -> None:
     next_state, prompt = next_step
     await state.set_state(next_state)
     await message.answer(prompt)
+
+
+async def _continue_after_declared_cost(
+    message: Message,
+    state: FSMContext,
+    user_repository: UserRepository,
+) -> None:
+    """Finish the wizard after declared cost is entered."""
+    data = await state.get_data()
+    if data.get("edit_mode"):
+        await state.update_data(edit_mode=False)
+        await _show_review(message, state)
+        return
+
+    await _create_ttn(message, state, user_repository)
 
 
 async def _search_cities(
@@ -480,7 +554,11 @@ async def handle_weight(message: Message, state: FSMContext) -> None:
 
 
 @router.message(TtnWizard.declared_cost, F.text)
-async def handle_declared_cost(message: Message, state: FSMContext) -> None:
+async def handle_declared_cost(
+    message: Message,
+    state: FSMContext,
+    user_repository: UserRepository,
+) -> None:
     if message.text is None:
         return
 
@@ -490,7 +568,7 @@ async def handle_declared_cost(message: Message, state: FSMContext) -> None:
         return
 
     await state.update_data(declared_cost=declared_cost)
-    await _continue_after_edit(message, state)
+    await _continue_after_declared_cost(message, state, user_repository)
 
 
 @router.callback_query(F.data == CALLBACK_TTN_REVIEW_EDIT)
@@ -541,37 +619,10 @@ async def handle_review_create(
     if callback.message is None or callback.from_user is None:
         return
 
-    api_key = await _get_api_key(user_repository, callback.from_user.id)
-    if api_key is None:
-        await callback.answer(MSG_TTN_NEED_API_KEY, show_alert=True)
-        return
-
-    data = await state.get_data()
-    await callback.answer("Створюємо ТТН...")
-
-    try:
-        async with NovaPoshtaClient(api_key) as client:
-            sender_profile = await fetch_sender_profile(client)
-            save_properties = build_save_properties(data, sender_profile)
-            response = await client.save_internet_document(save_properties)
-    except NovaPoshtaError as exc:
-        logger.error("TTN creation failed: {}", exc)
-        await callback.message.answer(
-            MSG_TTN_CREATE_FAILED.format(error=str(exc)),
-            reply_markup=build_main_menu_keyboard(),
-        )
-        return
-
-    document = (response.get("data") or [{}])[0]
-    ttn_number = str(document.get("IntDocNumber") or "—")
-    reference = str(document.get("Ref") or "—")
-    await state.clear()
-
-    await callback.message.answer(
-        MSG_TTN_CREATED.format(ttn_number=ttn_number, reference=reference),
-        reply_markup=build_main_menu_keyboard(),
+    await callback.answer(MSG_TTN_CREATING)
+    await _create_ttn(
+        callback.message,
+        state,
+        user_repository,
+        notify=False,
     )
-
-    if reference != "—":
-        print_link = build_print_link(reference, api_key)
-        await callback.message.answer(MSG_TTN_PRINT_LINK.format(link=print_link))

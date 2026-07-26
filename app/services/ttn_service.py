@@ -133,6 +133,34 @@ def build_print_link(document_ref: str, api_key: str) -> str:
     return PRINT_DOCUMENT_URL.format(document_ref=document_ref, api_key=api_key)
 
 
+def format_ttn_success_message(
+    *,
+    ttn_number: str,
+    reference: str,
+    delivery_cost: str | float | int | None = None,
+) -> str:
+    """Format a success message for a created TTN."""
+    lines = [
+        "✅ ТТН успішно створено!\n",
+        f"Номер: <b>{ttn_number}</b>",
+        f"Reference: <code>{reference}</code>",
+    ]
+    if delivery_cost is not None and str(delivery_cost).strip() not in {"", "—"}:
+        lines.append(f"Вартість доставки: {delivery_cost} грн")
+    return "\n".join(lines)
+
+
+def extract_created_document(response: dict[str, Any]) -> dict[str, Any]:
+    """Return the created document payload from InternetDocument.save."""
+    data = response.get("data") or []
+    if not data:
+        return {}
+    document = data[0]
+    if isinstance(document, dict):
+        return document
+    return {}
+
+
 def format_review_text(wizard_data: dict[str, Any]) -> str:
     """Format wizard data for the review step."""
     sender_city = wizard_data["sender_city"]["name"]

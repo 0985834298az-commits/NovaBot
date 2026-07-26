@@ -92,6 +92,12 @@ class NovaPoshtaClient:
 
         session = await self._ensure_session()
 
+        logger.info(
+            "Nova Poshta API request: model={} method={} properties={}",
+            model_name,
+            called_method,
+            json.dumps(method_properties or {}, ensure_ascii=False),
+        )
         logger.debug(
             "Nova Poshta request payload: {}",
             json.dumps(payload, ensure_ascii=False),

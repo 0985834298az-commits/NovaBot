@@ -21,6 +21,16 @@ BTN_API_KEY = "🔑 API ключ"
 BTN_SETTINGS = "⚙️ Налаштування"
 BTN_REPLACE_API_KEY = "Замінити API ключ"
 
+MAIN_MENU_BUTTONS = frozenset(
+    {
+        BTN_CREATE_TTN,
+        BTN_MY_WAYBILLS,
+        BTN_RECIPIENTS,
+        BTN_API_KEY,
+        BTN_SETTINGS,
+    }
+)
+
 CALLBACK_REPLACE_API_KEY = "replace_api_key"
 
 MSG_CREATE_TTN_SOON = "Створення ТТН скоро буде доступне."
@@ -47,6 +57,7 @@ MSG_TTN_INVALID_PHONE = "Невірний формат телефону. При�
 MSG_TTN_INVALID_WEIGHT = "Невірна вага. Введіть число більше 0."
 MSG_TTN_INVALID_COST = "Невірна оціночна вартість. Введіть число більше 0."
 MSG_TTN_CANCELLED = "Створення ТТН скасовано."
+MSG_TTN_CREATING = "Створюємо ТТН..."
 MSG_TTN_CREATED = (
     "✅ ТТН успішно створено!\n\n"
     "Номер: <b>{ttn_number}</b>\n"
