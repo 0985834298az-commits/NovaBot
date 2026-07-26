@@ -22,10 +22,11 @@ def build_city_keyboard(
 ) -> InlineKeyboardMarkup:
     """Build inline keyboard for settlement selection."""
     builder = InlineKeyboardBuilder()
-    for index, item in enumerate(items[:10]):
+    for item in items[:10]:
+        city_ref = item["ref"]
         builder.button(
             text=item["name"][:64],
-            callback_data=f"{CALLBACK_TTN_CITY}:{side}:{index}",
+            callback_data=f"{CALLBACK_TTN_CITY}:{side}:{city_ref}",
         )
     builder.adjust(1)
     return builder.as_markup()

@@ -63,6 +63,8 @@ from app.services.ttn_service import (
 
 router = Router(name="ttn")
 
+VALID_TTN_SIDES = frozenset({"sender", "recipient"})
+
 FIELD_PROMPTS: dict[str, str] = {
     "sender_city": MSG_TTN_ASK_SENDER_CITY,
     "sender_warehouse": MSG_TTN_ASK_SENDER_WAREHOUSE,
@@ -86,6 +88,31 @@ FIELD_STATES = {
     "weight": TtnWizard.weight,
     "declared_cost": TtnWizard.declared_cost,
 }
+
+
+def _parse_city_callback(callback_data: str) -> tuple[str, str] | None:
+    """Parse city callback data: ttn:city:{side}:{ref}."""
+    prefix = f"{CALLBACK_TTN_CITY}:"
+    if not callback_data.startswith(prefix):
+        return None
+
+    payload = callback_data[len(prefix):]
+    side, _, city_ref = payload.partition(":")
+    if side not in VALID_TTN_SIDES or not city_ref:
+        return None
+
+    return side, city_ref
+
+
+def _find_city_option(
+    options: list[dict[str, str]],
+    city_ref: str,
+) -> dict[str, str] | None:
+    """Find a settlement option by its Ref."""
+    for item in options:
+        if item.get("ref") == city_ref:
+            return item
+    return None
 
 
 async def _get_api_key(
@@ -287,12 +314,16 @@ async def handle_city_select(callback: CallbackQuery, state: FSMContext) -> None
     if callback.data is None or callback.message is None:
         return
 
-    _, side, index_raw = callback.data.split(":", maxsplit=2)
+    parsed = _parse_city_callback(callback.data)
+    if parsed is None:
+        await callback.answer("Некоректний вибір", show_alert=True)
+        return
+
+    side, city_ref = parsed
     data = await state.get_data()
     options: list[dict[str, str]] = data.get(f"{side}_city_options", [])
-    try:
-        selected = options[int(index_raw)]
-    except (ValueError, IndexError):
+    selected = _find_city_option(options, city_ref)
+    if selected is None:
         await callback.answer("Некоректний вибір", show_alert=True)
         return
 
