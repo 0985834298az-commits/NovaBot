@@ -1,6 +1,11 @@
 import asyncio
 import sys
 
+import truststore
+
+# Use the Windows certificate store before any HTTPS client modules initialize SSL.
+truststore.inject_into_ssl()
+
 from loguru import logger
 
 from app.bot.main import on_shutdown, on_startup

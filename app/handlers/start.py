@@ -2,12 +2,12 @@ from aiogram import Router
 from aiogram.filters import CommandStart
 from aiogram.types import Message
 
-router = Router(name="start")
+from app.constants import START_MESSAGE
 
-START_MESSAGE = "NovaBot v0.1 started successfully"
+router = Router(name="start")
 
 
 @router.message(CommandStart())
 async def handle_start(message: Message) -> None:
-    """Reply to the /start command."""
+    """Welcome authorized users."""
     await message.answer(START_MESSAGE)
