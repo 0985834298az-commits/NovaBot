@@ -17,6 +17,7 @@ from app.database.session import (
 from app.handlers import (
     api_key_router,
     menu_router,
+    payment_cards_router,
     recipients_router,
     start_router,
     ttn_router,
@@ -45,6 +46,7 @@ def create_dispatcher(
     dispatcher.update.middleware(DatabaseMiddleware(session_factory))
     dispatcher.include_router(start_router)
     dispatcher.include_router(menu_router)
+    dispatcher.include_router(payment_cards_router)
     dispatcher.include_router(recipients_router)
     dispatcher.include_router(api_key_router)
     dispatcher.include_router(ttn_router)

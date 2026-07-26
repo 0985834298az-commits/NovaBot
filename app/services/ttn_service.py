@@ -603,6 +603,10 @@ def build_save_properties(
             },
         ]
 
+    payment_card_number = wizard_data.get("payment_card_number")
+    if payment_card_number:
+        properties["PaymentCard"] = str(payment_card_number)
+
     return properties
 
 

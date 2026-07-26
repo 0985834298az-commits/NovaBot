@@ -5,6 +5,7 @@ from loguru import logger
 
 from app.constants import (
     ASK_API_KEY_MESSAGE,
+    MSG_NO_ACTIVE_PAYMENT_CARD,
     MSG_TTN_ASK_ORDER,
     MSG_TTN_CREATE_FAILED,
     MSG_TTN_CREATING,
@@ -17,6 +18,7 @@ from app.handlers.states import TtnWizard, WaitingForApiKey
 from app.keyboards import build_main_menu_keyboard
 from app.nova_poshta import NovaPoshtaClient
 from app.nova_poshta.exceptions import NovaPoshtaError
+from app.repositories.payment_card_repository import PaymentCardRepository
 from app.repositories.recipient_repository import RecipientRepository
 from app.repositories.user_repository import UserRepository
 from app.services.sender_cache import (
@@ -55,6 +57,7 @@ async def begin_ttn_wizard(
     message: Message,
     state: FSMContext,
     user_repository: UserRepository,
+    payment_card_repository: PaymentCardRepository,
 ) -> None:
     """Start single-message TTN creation."""
     if message.from_user is None:
@@ -62,6 +65,14 @@ async def begin_ttn_wizard(
 
     if not is_sender_cache_ready():
         await message.answer(_sender_not_configured_message())
+        return
+
+    active_card = await payment_card_repository.get_active_card(message.from_user.id)
+    if active_card is None:
+        await message.answer(
+            MSG_NO_ACTIVE_PAYMENT_CARD,
+            reply_markup=build_main_menu_keyboard(),
+        )
         return
 
     user = await user_repository.get_user(message.from_user.id)
@@ -81,6 +92,7 @@ async def handle_ttn_order_input(
     state: FSMContext,
     user_repository: UserRepository,
     recipient_repository: RecipientRepository,
+    payment_card_repository: PaymentCardRepository,
 ) -> None:
     """Parse one message and create a TTN immediately."""
     if message.from_user is None or message.text is None:
@@ -108,6 +120,15 @@ async def handle_ttn_order_input(
         )
         return
 
+    active_card = await payment_card_repository.get_active_card(message.from_user.id)
+    if active_card is None:
+        await state.clear()
+        await message.answer(
+            MSG_NO_ACTIVE_PAYMENT_CARD,
+            reply_markup=build_main_menu_keyboard(),
+        )
+        return
+
     await message.answer(MSG_TTN_CREATING)
 
     try:
@@ -118,6 +139,7 @@ async def handle_ttn_order_input(
                 order,
                 sender_location,
             )
+            wizard_data["payment_card_number"] = active_card.card_number
             document = await create_internet_document(
                 client,
                 wizard_data,

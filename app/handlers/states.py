@@ -22,3 +22,12 @@ class RecipientWizard(StatesGroup):
     edit_city = State()
     edit_warehouse = State()
     ttn_cod = State()
+
+
+class PaymentCardWizard(StatesGroup):
+    """Payment card management flows."""
+
+    add_owner = State()
+    add_number = State()
+    edit_owner = State()
+    edit_number = State()

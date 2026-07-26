@@ -17,6 +17,7 @@ API_KEY_INVALID_MESSAGE = "❌ API ключ неправильний.\n\nСпр�
 BTN_CREATE_TTN = "📦 Створити ТТН"
 BTN_MY_WAYBILLS = "📋 Мої накладні"
 BTN_RECIPIENTS = "👥 Одержувачі"
+BTN_CARDS = "💳 Картки"
 BTN_API_KEY = "🔑 API ключ"
 BTN_SETTINGS = "⚙️ Налаштування"
 BTN_REPLACE_API_KEY = "Замінити API ключ"
@@ -26,6 +27,7 @@ MAIN_MENU_BUTTONS = frozenset(
         BTN_CREATE_TTN,
         BTN_MY_WAYBILLS,
         BTN_RECIPIENTS,
+        BTN_CARDS,
         BTN_API_KEY,
         BTN_SETTINGS,
     }
@@ -67,6 +69,36 @@ CALLBACK_RECIPIENT_DELETE = "recipient:delete"
 CALLBACK_RECIPIENT_DELETE_YES = "recipient:delete:yes"
 CALLBACK_RECIPIENT_DELETE_NO = "recipient:delete:no"
 CALLBACK_RECIPIENT_SEARCH = "recipient:search"
+
+BTN_CARD_SELECT = "✅ Обрати"
+BTN_CARD_EDIT = "✏️ Редагувати"
+BTN_CARD_DELETE = "🗑 Видалити"
+BTN_CARD_ADD = "➕ Додати картку"
+BTN_BACK = "⬅️ Назад"
+BTN_CARD_DELETE_YES = "✅ Так"
+BTN_CARD_DELETE_NO = "❌ Ні"
+
+CALLBACK_CARD_SELECT = "card:select"
+CALLBACK_CARD_EDIT = "card:edit"
+CALLBACK_CARD_DELETE = "card:delete"
+CALLBACK_CARD_DELETE_YES = "card:delete:yes"
+CALLBACK_CARD_DELETE_NO = "card:delete:no"
+CALLBACK_CARD_ADD = "card:add"
+CALLBACK_CARD_BACK = "card:back"
+
+MSG_CARDS_EMPTY = "Список карток порожній."
+MSG_CARDS_LIST_HEADER = "Збережені картки:"
+MSG_CARD_ASK_OWNER = "Ім'я власника картки"
+MSG_CARD_ASK_NUMBER = "Номер картки"
+MSG_CARD_INVALID_NUMBER = "Невірний номер картки. Введіть рівно 16 цифр."
+MSG_CARD_SAVED = "✅ Картку збережено."
+MSG_CARD_ACTIVE_CHANGED = "✅ Активна картка змінена."
+MSG_CARD_DELETE_CONFIRM = "Видалити картку?"
+MSG_CARD_DELETED = "Картку видалено."
+MSG_CARD_EDIT_NAME = "Введіть ім'я власника картки:"
+MSG_CARD_EDIT_NUMBER = "Введіть номер картки:"
+MSG_CARD_UPDATED = "Дані картки оновлено."
+MSG_NO_ACTIVE_PAYMENT_CARD = "Спочатку додайте картку у розділі 💳 Картки."
 
 API_KEY_MASK_SUFFIX = "****"
 API_KEY_VISIBLE_CHARS = 8

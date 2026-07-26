@@ -21,6 +21,7 @@ from app.constants import (
     MSG_RECIPIENTS_SEARCH_EMPTY,
     MSG_RECIPIENTS_SEARCH_PROMPT,
     MSG_RECIPIENTS_TRUNCATED,
+    MSG_NO_ACTIVE_PAYMENT_CARD,
     MSG_TTN_CREATE_FAILED,
     MSG_TTN_CREATING,
     MSG_TTN_NEED_API_KEY,
@@ -44,6 +45,7 @@ from app.keyboards import (
 from app.models.recipient import Recipient
 from app.nova_poshta import NovaPoshtaClient
 from app.nova_poshta.exceptions import NovaPoshtaError
+from app.repositories.payment_card_repository import PaymentCardRepository
 from app.repositories.recipient_repository import RecipientRepository
 from app.repositories.user_repository import UserRepository
 from app.services.sender_cache import get_cached_sender_location, is_sender_cache_ready
@@ -165,6 +167,7 @@ async def handle_recipient_create_ttn(
     callback: CallbackQuery,
     state: FSMContext,
     user_repository: UserRepository,
+    payment_card_repository: PaymentCardRepository,
 ) -> None:
     if callback.data is None or callback.message is None or callback.from_user is None:
         return
@@ -185,6 +188,12 @@ async def handle_recipient_create_ttn(
         await callback.message.answer(MSG_TTN_NEED_API_KEY)
         return
 
+    active_card = await payment_card_repository.get_active_card(callback.from_user.id)
+    if active_card is None:
+        await callback.answer()
+        await callback.message.answer(MSG_NO_ACTIVE_PAYMENT_CARD)
+        return
+
     await state.clear()
     await state.set_state(RecipientWizard.ttn_cod)
     await state.update_data(recipient_id=recipient_id)
@@ -198,6 +207,7 @@ async def handle_recipient_ttn_cod(
     state: FSMContext,
     user_repository: UserRepository,
     recipient_repository: RecipientRepository,
+    payment_card_repository: PaymentCardRepository,
 ) -> None:
     if message.from_user is None or message.text is None:
         return
@@ -235,6 +245,15 @@ async def handle_recipient_ttn_cod(
         )
         return
 
+    active_card = await payment_card_repository.get_active_card(message.from_user.id)
+    if active_card is None:
+        await state.clear()
+        await message.answer(
+            MSG_NO_ACTIVE_PAYMENT_CARD,
+            reply_markup=build_main_menu_keyboard(),
+        )
+        return
+
     await message.answer(MSG_TTN_CREATING)
 
     try:
@@ -244,6 +263,7 @@ async def handle_recipient_ttn_cod(
             cod_amount,
             sender_location,
         )
+        wizard_data["payment_card_number"] = active_card.card_number
         async with NovaPoshtaClient(api_key) as client:
             sender_profile = await fetch_sender_profile(client)
             document = await create_internet_document(
