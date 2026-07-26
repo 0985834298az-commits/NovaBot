@@ -19,6 +19,7 @@ METHOD_GET_CATALOG_COUNTERPARTY = "getCatalogCounterparty"
 METHOD_GET_COUNTERPARTY_ADDRESSES = "getCounterpartyAddresses"
 METHOD_GET_COUNTERPARTY_CONTACT_PERSONS = "getCounterpartyContactPersons"
 METHOD_SAVE = "save"
+METHOD_UPDATE = "update"
 
 PRINT_DOCUMENT_URL = (
     "https://my.novaposhta.ua/orders/printDocument/orders[]/{document_ref}/type/pdf/apiKey/{api_key}"

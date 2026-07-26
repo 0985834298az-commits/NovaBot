@@ -18,6 +18,7 @@ from app.nova_poshta.constants import (
     METHOD_GET_STATUS,
     METHOD_GET_WAREHOUSES,
     METHOD_SAVE,
+    METHOD_UPDATE,
     METHOD_SEARCH_SETTLEMENTS,
     MODEL_ADDRESS,
     MODEL_COMMON,
@@ -240,6 +241,21 @@ class NovaPoshtaClient:
             },
         )
 
+    async def get_recipient_counterparties(
+        self,
+        *,
+        find_by_string: str = "",
+    ) -> dict[str, Any]:
+        """Load recipient counterparties linked to the API key."""
+        properties: dict[str, Any] = {
+            "CounterpartyProperty": "Recipient",
+            "Page": SEARCH_PAGE,
+        }
+        if find_by_string:
+            properties["FindByString"] = find_by_string
+
+        return await self._call(MODEL_COUNTERPARTY, METHOD_GET_COUNTERPARTIES, properties)
+
     async def get_counterparty_contact_persons(
         self,
         counterparty_ref: str,
@@ -254,12 +270,20 @@ class NovaPoshtaClient:
             },
         )
 
-    async def get_catalog_counterparty(self, phone: str) -> dict[str, Any]:
-        """Find a counterparty by phone number."""
+    async def get_catalog_counterparty(
+        self,
+        phone: str,
+        last_name: str,
+    ) -> dict[str, Any]:
+        """Find a counterparty by phone number and last name."""
+        properties: dict[str, Any] = {"Phone": phone}
+        if last_name:
+            properties["LastName"] = last_name
+
         return await self._call(
             MODEL_COUNTERPARTY,
             METHOD_GET_CATALOG_COUNTERPARTY,
-            {"Phone": phone},
+            properties,
         )
 
     async def get_counterparty_addresses(
@@ -285,7 +309,7 @@ class NovaPoshtaClient:
         phone: str,
         city_ref: str,
     ) -> dict[str, Any]:
-        """Create or update a private-person recipient counterparty."""
+        """Create a private-person recipient counterparty."""
         properties: dict[str, Any] = {
             "FirstName": first_name,
             "LastName": last_name,
@@ -298,6 +322,31 @@ class NovaPoshtaClient:
             properties["MiddleName"] = middle_name
 
         return await self._call(MODEL_COUNTERPARTY, METHOD_SAVE, properties)
+
+    async def update_recipient_counterparty(
+        self,
+        *,
+        counterparty_ref: str,
+        first_name: str,
+        last_name: str,
+        middle_name: str,
+        phone: str,
+        city_ref: str,
+    ) -> dict[str, Any]:
+        """Update an existing private-person recipient counterparty."""
+        properties: dict[str, Any] = {
+            "Ref": counterparty_ref,
+            "FirstName": first_name,
+            "LastName": last_name,
+            "Phone": phone,
+            "CounterpartyType": "PrivatePerson",
+            "CounterpartyProperty": "Recipient",
+            "CityRef": city_ref,
+        }
+        if middle_name:
+            properties["MiddleName"] = middle_name
+
+        return await self._call(MODEL_COUNTERPARTY, METHOD_UPDATE, properties)
 
     async def save_contact_person(
         self,
@@ -319,6 +368,29 @@ class NovaPoshtaClient:
             properties["MiddleName"] = middle_name
 
         return await self._call(MODEL_CONTACT_PERSON, METHOD_SAVE, properties)
+
+    async def update_contact_person(
+        self,
+        *,
+        contact_ref: str,
+        counterparty_ref: str,
+        first_name: str,
+        last_name: str,
+        middle_name: str,
+        phone: str,
+    ) -> dict[str, Any]:
+        """Update a contact person for a counterparty."""
+        properties: dict[str, Any] = {
+            "Ref": contact_ref,
+            "CounterpartyRef": counterparty_ref,
+            "FirstName": first_name,
+            "LastName": last_name,
+            "Phone": phone,
+        }
+        if middle_name:
+            properties["MiddleName"] = middle_name
+
+        return await self._call(MODEL_CONTACT_PERSON, METHOD_UPDATE, properties)
 
     async def save_internet_document(
         self,

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+
+from loguru import logger
 
 from app.constants import (
     TTN_DEFAULT_CARGO_DESCRIPTION,
@@ -168,8 +171,25 @@ async def create_internet_document(
         sender_profile,
         recipient_profile,
     )
+    logger.info(
+        "InternetDocument.save payload: {}",
+        json.dumps(save_properties, ensure_ascii=False),
+    )
     response = await client.save_internet_document(save_properties)
-    return extract_created_document(response)
+    document = extract_created_document(response)
+    logger.info(
+        (
+            "Created TTN recipient verification: entered_name={} entered_phone={} "
+            "RecipientRef={} ContactPersonRef={} document_recipient={} document_phone={}"
+        ),
+        wizard_data["recipient_name"],
+        wizard_data["recipient_phone"],
+        recipient_profile["ref"],
+        recipient_profile["contact_ref"],
+        _extract_document_recipient_name(document),
+        document.get("RecipientsPhone") or document.get("RecipientPhone"),
+    )
+    return document
 
 
 async def fetch_sender_profile(client: NovaPoshtaClient) -> dict[str, str]:
@@ -221,6 +241,23 @@ def parse_recipient_name(full_name: str) -> tuple[str, str, str]:
     return "Одержувач", "Одержувач", ""
 
 
+def format_phone_for_nova_poshta(phone: str) -> str:
+    """Convert normalized phone numbers to Nova Poshta 0XXXXXXXXX format."""
+    normalized = normalize_phone(phone)
+    if normalized is None:
+        return phone
+    if normalized.startswith("380") and len(normalized) == 12:
+        return f"0{normalized[3:]}"
+    return normalized
+
+
+def phones_match(phone_a: str | None, phone_b: str | None) -> bool:
+    """Compare two phone numbers after normalization."""
+    normalized_a = normalize_phone(str(phone_a or ""))
+    normalized_b = normalize_phone(str(phone_b or ""))
+    return normalized_a is not None and normalized_a == normalized_b
+
+
 def _extract_contact_ref(counterparty: dict[str, Any]) -> str:
     contacts = counterparty.get("ContactPerson") or counterparty.get("ContactPersons") or []
     if isinstance(contacts, list) and contacts:
@@ -244,82 +281,192 @@ async def _load_recipient_contacts(
     return [contact for contact in contacts if isinstance(contact, dict)]
 
 
+def _find_counterparty_by_phone(
+    counterparties: list[dict[str, Any]],
+    phone: str,
+) -> dict[str, Any] | None:
+    """Find a counterparty whose phone matches the entered value."""
+    for counterparty in counterparties:
+        if phones_match(str(counterparty.get("Phone") or ""), phone):
+            return counterparty
+    return None
+
+
+def _find_contact_by_phone(
+    contacts: list[dict[str, Any]],
+    phone: str,
+) -> dict[str, Any] | None:
+    """Find a contact person whose phone matches the entered value."""
+    for contact in contacts:
+        contact_phone = contact.get("Phones") or contact.get("Phone")
+        if phones_match(str(contact_phone or ""), phone):
+            return contact
+    return None
+
+
+async def _search_recipient_counterparty(
+    client: NovaPoshtaClient,
+    *,
+    phone: str,
+    last_name: str,
+) -> dict[str, Any] | None:
+    """Search account recipients and catalog by phone."""
+    np_phone = format_phone_for_nova_poshta(phone)
+
+    recipients_response = await client.get_recipient_counterparties(
+        find_by_string=np_phone,
+    )
+    if recipients_response.get("success") is True:
+        matched = _find_counterparty_by_phone(
+            recipients_response.get("data") or [],
+            phone,
+        )
+        if matched is not None:
+            return matched
+
+    catalog_response = await client.get_catalog_counterparty(np_phone, last_name)
+    if catalog_response.get("success") is True:
+        matched = _find_counterparty_by_phone(
+            catalog_response.get("data") or [],
+            phone,
+        )
+        if matched is not None:
+            return matched
+
+    return None
+
+
+async def _resolve_recipient_contact_ref(
+    client: NovaPoshtaClient,
+    *,
+    counterparty_ref: str,
+    phone: str,
+) -> str:
+    """Load the contact person Ref for a recipient counterparty."""
+    contacts = await _load_recipient_contacts(client, counterparty_ref)
+    matched_contact = _find_contact_by_phone(contacts, phone)
+    if matched_contact is not None:
+        contact_ref = str(matched_contact.get("Ref") or "")
+        if contact_ref:
+            return contact_ref
+
+    if contacts:
+        contact_ref = str(contacts[0].get("Ref") or "")
+        if contact_ref:
+            return contact_ref
+
+    msg = "Contact person was not found for recipient counterparty"
+    raise NovaPoshtaApiError(msg)
+
+
 async def fetch_or_create_recipient_profile(
     client: NovaPoshtaClient,
     wizard_data: dict[str, Any],
 ) -> dict[str, str]:
     """Load or create recipient counterparty and contact person."""
     phone = str(wizard_data["recipient_phone"])
+    recipient_name = str(wizard_data["recipient_name"])
     recipient_city = wizard_data["recipient_city"]
-    last_name, first_name, middle_name = parse_recipient_name(
-        str(wizard_data["recipient_name"]),
-    )
+    last_name, first_name, middle_name = parse_recipient_name(recipient_name)
     city_ref = str(recipient_city["delivery_city"])
+    np_phone = format_phone_for_nova_poshta(phone)
 
-    catalog_response = await client.get_catalog_counterparty(phone)
-    if catalog_response.get("success") is True:
-        catalog_data = catalog_response.get("data") or []
-        if catalog_data:
-            counterparty = catalog_data[0]
-            counterparty_ref = str(counterparty.get("Ref") or "")
-            contact_ref = _extract_contact_ref(counterparty)
-            if counterparty_ref and not contact_ref:
-                contacts = await _load_recipient_contacts(client, counterparty_ref)
-                if contacts:
-                    contact_ref = str(contacts[0].get("Ref") or "")
-            if counterparty_ref and contact_ref:
-                return {
-                    "ref": counterparty_ref,
-                    "contact_ref": contact_ref,
-                    "phone": phone,
-                }
-
-    save_response = await client.save_recipient_counterparty(
-        first_name=first_name,
-        last_name=last_name,
-        middle_name=middle_name,
-        phone=phone,
-        city_ref=city_ref,
+    logger.info(
+        "Resolving TTN recipient: entered_name={} entered_phone={}",
+        recipient_name,
+        phone,
     )
-    if save_response.get("success") is not True:
-        errors = [str(error) for error in save_response.get("errors") or []]
-        msg = "; ".join(errors) or "Failed to create recipient counterparty"
-        raise NovaPoshtaApiError(msg, errors=errors)
 
-    counterparty = (save_response.get("data") or [{}])[0]
-    counterparty_ref = str(counterparty.get("Ref") or "")
-    contact_ref = _extract_contact_ref(counterparty)
+    existing_counterparty = await _search_recipient_counterparty(
+        client,
+        phone=phone,
+        last_name=last_name,
+    )
 
-    if counterparty_ref and not contact_ref:
-        contacts = await _load_recipient_contacts(client, counterparty_ref)
-        if contacts:
-            contact_ref = str(contacts[0].get("Ref") or "")
+    counterparty_ref = ""
+    contact_ref = ""
 
-    if counterparty_ref and not contact_ref:
-        contact_response = await client.save_contact_person(
-            counterparty_ref=counterparty_ref,
+    if existing_counterparty is not None:
+        counterparty_ref = str(existing_counterparty.get("Ref") or "")
+        if counterparty_ref:
+            update_response = await client.update_recipient_counterparty(
+                counterparty_ref=counterparty_ref,
+                first_name=first_name,
+                last_name=last_name,
+                middle_name=middle_name,
+                phone=np_phone,
+                city_ref=city_ref,
+            )
+            if update_response.get("success") is True:
+                contact_ref = await _resolve_recipient_contact_ref(
+                    client,
+                    counterparty_ref=counterparty_ref,
+                    phone=phone,
+                )
+            else:
+                logger.warning(
+                    "Failed to update existing recipient counterparty, creating a new one: {}",
+                    update_response.get("errors"),
+                )
+                counterparty_ref = ""
+                contact_ref = ""
+
+    if not counterparty_ref or not contact_ref:
+        save_response = await client.save_recipient_counterparty(
             first_name=first_name,
             last_name=last_name,
             middle_name=middle_name,
-            phone=phone,
+            phone=np_phone,
+            city_ref=city_ref,
         )
-        if contact_response.get("success") is not True:
-            errors = [str(error) for error in contact_response.get("errors") or []]
-            msg = "; ".join(errors) or "Failed to create recipient contact person"
+        if save_response.get("success") is not True:
+            errors = [str(error) for error in save_response.get("errors") or []]
+            msg = "; ".join(errors) or "Failed to create recipient counterparty"
             raise NovaPoshtaApiError(msg, errors=errors)
 
-        contact = (contact_response.get("data") or [{}])[0]
-        contact_ref = str(contact.get("Ref") or "")
+        counterparty = (save_response.get("data") or [{}])[0]
+        counterparty_ref = str(counterparty.get("Ref") or "")
+        contact_ref = _extract_contact_ref(counterparty)
 
-    if not counterparty_ref or not contact_ref:
-        msg = "Recipient counterparty was created without required refs"
-        raise NovaPoshtaApiError(msg)
+        if counterparty_ref and not contact_ref:
+            contact_ref = await _resolve_recipient_contact_ref(
+                client,
+                counterparty_ref=counterparty_ref,
+                phone=phone,
+            )
+
+        if not counterparty_ref or not contact_ref:
+            msg = "Recipient counterparty was created without required refs"
+            raise NovaPoshtaApiError(msg)
+
+    logger.info(
+        "TTN recipient resolved: entered_name={} entered_phone={} RecipientRef={} ContactPersonRef={}",
+        recipient_name,
+        phone,
+        counterparty_ref,
+        contact_ref,
+    )
 
     return {
         "ref": counterparty_ref,
         "contact_ref": contact_ref,
         "phone": phone,
+        "name": recipient_name,
     }
+
+
+def _extract_document_recipient_name(document: dict[str, Any]) -> str:
+    """Extract recipient name fields from InternetDocument.save response."""
+    for key in (
+        "RecipientContactPerson",
+        "RecipientDescription",
+        "RecipientName",
+        "ContactRecipientDescription",
+    ):
+        value = document.get(key)
+        if value:
+            return str(value)
+    return ""
 
 
 def build_save_properties(
