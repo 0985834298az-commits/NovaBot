@@ -11,6 +11,7 @@ from loguru import logger
 from app.nova_poshta.constants import (
     API_URL,
     DEFAULT_TIMEOUT_SECONDS,
+    METHOD_GET_CATALOG_COUNTERPARTY,
     METHOD_GET_COUNTERPARTIES,
     METHOD_GET_COUNTERPARTY_CONTACT_PERSONS,
     METHOD_GET_STATUS,
@@ -19,6 +20,7 @@ from app.nova_poshta.constants import (
     METHOD_SEARCH_SETTLEMENTS,
     MODEL_ADDRESS,
     MODEL_COMMON,
+    MODEL_CONTACT_PERSON,
     MODEL_COUNTERPARTY,
     MODEL_INTERNET_DOCUMENT,
     SEARCH_LIMIT,
@@ -77,6 +79,19 @@ class NovaPoshtaClient:
     async def __aexit__(self, *args: object) -> None:
         await self.close()
 
+    @staticmethod
+    def _build_log_payload(
+        model_name: str,
+        called_method: str,
+        method_properties: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Build a request payload for logging without the API key."""
+        return {
+            "modelName": model_name,
+            "calledMethod": called_method,
+            "methodProperties": method_properties or {},
+        }
+
     async def _call(
         self,
         model_name: str,
@@ -91,26 +106,20 @@ class NovaPoshtaClient:
         }
 
         session = await self._ensure_session()
-
-        logger.info(
-            "Nova Poshta API request: model={} method={} properties={}",
+        log_payload = self._build_log_payload(
             model_name,
             called_method,
-            json.dumps(method_properties or {}, ensure_ascii=False),
+            method_properties,
         )
-        logger.debug(
-            "Nova Poshta request payload: {}",
-            json.dumps(payload, ensure_ascii=False),
+
+        logger.info(
+            "Nova Poshta API request JSON: {}",
+            json.dumps(log_payload, ensure_ascii=False),
         )
 
         try:
             async with session.post(API_URL, json=payload) as response:
                 raw_body = await response.text()
-                logger.info(
-                    "Nova Poshta raw response (HTTP {}): {}",
-                    response.status,
-                    raw_body,
-                )
 
                 try:
                     data = json.loads(raw_body)
@@ -118,6 +127,11 @@ class NovaPoshtaClient:
                     msg = "Nova Poshta API returned a non-JSON response"
                     logger.error("{}: {}", msg, raw_body[:500])
                     raise NovaPoshtaResponseError(msg) from exc
+
+                logger.info(
+                    "Nova Poshta API response JSON: {}",
+                    json.dumps(data, ensure_ascii=False),
+                )
 
                 if not isinstance(data, dict):
                     msg = "Nova Poshta API returned an unexpected JSON payload"
@@ -238,6 +252,58 @@ class NovaPoshtaClient:
                 "Page": SEARCH_PAGE,
             },
         )
+
+    async def get_catalog_counterparty(self, phone: str) -> dict[str, Any]:
+        """Find a counterparty by phone number."""
+        return await self._call(
+            MODEL_COUNTERPARTY,
+            METHOD_GET_CATALOG_COUNTERPARTY,
+            {"Phone": phone},
+        )
+
+    async def save_recipient_counterparty(
+        self,
+        *,
+        first_name: str,
+        last_name: str,
+        middle_name: str,
+        phone: str,
+        city_ref: str,
+    ) -> dict[str, Any]:
+        """Create or update a private-person recipient counterparty."""
+        properties: dict[str, Any] = {
+            "FirstName": first_name,
+            "LastName": last_name,
+            "Phone": phone,
+            "CounterpartyType": "PrivatePerson",
+            "CounterpartyProperty": "Recipient",
+            "CityRef": city_ref,
+        }
+        if middle_name:
+            properties["MiddleName"] = middle_name
+
+        return await self._call(MODEL_COUNTERPARTY, METHOD_SAVE, properties)
+
+    async def save_contact_person(
+        self,
+        *,
+        counterparty_ref: str,
+        first_name: str,
+        last_name: str,
+        middle_name: str,
+        phone: str,
+    ) -> dict[str, Any]:
+        """Create a contact person for a counterparty."""
+        properties: dict[str, Any] = {
+            "CounterpartyRef": counterparty_ref,
+            "FirstName": first_name,
+            "LastName": last_name,
+            "Phone": phone,
+        }
+        if middle_name:
+            properties["MiddleName"] = middle_name
+
+        return await self._call(MODEL_CONTACT_PERSON, METHOD_SAVE, properties)
 
     async def save_internet_document(
         self,

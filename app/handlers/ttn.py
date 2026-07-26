@@ -51,6 +51,7 @@ from app.services.ttn_service import (
     build_print_link,
     build_save_properties,
     extract_created_document,
+    fetch_or_create_recipient_profile,
     fetch_sender_profile,
     format_review_text,
     format_ttn_success_message,
@@ -186,7 +187,12 @@ async def _create_ttn(
     try:
         async with NovaPoshtaClient(api_key) as client:
             sender_profile = await fetch_sender_profile(client)
-            save_properties = build_save_properties(data, sender_profile)
+            recipient_profile = await fetch_or_create_recipient_profile(client, data)
+            save_properties = build_save_properties(
+                data,
+                sender_profile,
+                recipient_profile,
+            )
             logger.info("Creating TTN for user {}", message.from_user.id)
             response = await client.save_internet_document(save_properties)
     except NovaPoshtaError as exc:
