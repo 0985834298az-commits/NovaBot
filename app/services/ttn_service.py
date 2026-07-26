@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from app.constants import (
+    TTN_DEFAULT_CARGO_DESCRIPTION,
+    TTN_DEFAULT_DECLARED_COST,
+    TTN_DEFAULT_WEIGHT,
+)
 from app.nova_poshta.client import NovaPoshtaClient
 from app.nova_poshta.constants import PRINT_DOCUMENT_URL
 from app.nova_poshta.exceptions import NovaPoshtaApiError
@@ -53,6 +59,153 @@ def parse_warehouses(response: dict[str, Any]) -> list[dict[str, str]]:
     return warehouses
 
 
+@dataclass(frozen=True, slots=True)
+class TtnOrderInput:
+    """Parsed single-message TTN order."""
+
+    recipient_name: str
+    recipient_phone: str
+    city_query: str
+    warehouse_number: str
+    cod_amount: str
+
+
+def parse_ttn_order_message(text: str) -> TtnOrderInput | None:
+    """Parse a five-line TTN order message."""
+    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
+    if len(lines) != 5:
+        return None
+
+    phone = normalize_phone(lines[1])
+    cod_amount = parse_declared_cost(lines[4])
+    if phone is None or cod_amount is None:
+        return None
+
+    return TtnOrderInput(
+        recipient_name=lines[0],
+        recipient_phone=phone,
+        city_query=lines[2],
+        warehouse_number=lines[3].strip().lstrip("№"),
+        cod_amount=cod_amount,
+    )
+
+
+def find_best_settlement(
+    settlements: list[dict[str, str]],
+    query: str,
+) -> dict[str, str] | None:
+    """Pick the best settlement match for the provided query."""
+    if not settlements:
+        return None
+
+    query_lower = query.casefold()
+    for settlement in settlements:
+        if query_lower in settlement["name"].casefold():
+            return settlement
+
+    return settlements[0]
+
+
+def find_warehouse_by_number(
+    warehouses: list[dict[str, str]],
+    number: str,
+) -> dict[str, str] | None:
+    """Find a warehouse by its branch number."""
+    normalized = number.strip().lstrip("№")
+    for warehouse in warehouses:
+        if warehouse["number"] == normalized:
+            return warehouse
+    return None
+
+
+async def fetch_sender_location(
+    client: NovaPoshtaClient,
+    sender_ref: str,
+) -> dict[str, dict[str, str]]:
+    """Load the sender city and warehouse from counterparty addresses."""
+    response = await client.get_counterparty_addresses(sender_ref)
+    if response.get("success") is not True:
+        errors = [str(error) for error in response.get("errors") or []]
+        msg = "; ".join(errors) or "Failed to load sender addresses"
+        raise NovaPoshtaApiError(msg, errors=errors)
+
+    addresses = response.get("data") or []
+    for address in addresses:
+        if not isinstance(address, dict):
+            continue
+
+        warehouse_ref = str(address.get("Ref") or "")
+        city_ref = str(address.get("CityRef") or address.get("DeliveryCity") or "")
+        if not warehouse_ref or not city_ref:
+            continue
+
+        return {
+            "sender_city": {"delivery_city": city_ref},
+            "sender_warehouse": {
+                "ref": warehouse_ref,
+                "number": str(address.get("WarehouseIndex") or address.get("Number") or ""),
+                "description": str(address.get("Description") or address.get("Address") or ""),
+            },
+        }
+
+    msg = "Sender warehouse address was not found for this API key"
+    raise NovaPoshtaApiError(msg)
+
+
+async def prepare_wizard_data_from_order(
+    client: NovaPoshtaClient,
+    order: TtnOrderInput,
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Resolve API data required to create a TTN from a parsed order."""
+    sender_profile = await fetch_sender_profile(client)
+    sender_location = await fetch_sender_location(client, sender_profile["ref"])
+
+    city_response = await client.search_settlements(order.city_query)
+    settlements = parse_settlements(city_response)
+    recipient_city = find_best_settlement(settlements, order.city_query)
+    if recipient_city is None:
+        msg = "Recipient city was not found"
+        raise NovaPoshtaApiError(msg)
+
+    warehouse_response = await client.get_warehouses(
+        recipient_city["delivery_city"],
+        find_by_string=order.warehouse_number,
+    )
+    warehouses = parse_warehouses(warehouse_response)
+    recipient_warehouse = find_warehouse_by_number(warehouses, order.warehouse_number)
+    if recipient_warehouse is None:
+        msg = "Recipient warehouse was not found"
+        raise NovaPoshtaApiError(msg)
+
+    return {
+        **sender_location,
+        "recipient_name": order.recipient_name,
+        "recipient_phone": order.recipient_phone,
+        "recipient_city": recipient_city,
+        "recipient_warehouse": recipient_warehouse,
+        "cargo_description": TTN_DEFAULT_CARGO_DESCRIPTION,
+        "weight": TTN_DEFAULT_WEIGHT,
+        "declared_cost": TTN_DEFAULT_DECLARED_COST,
+        "cod_amount": order.cod_amount,
+    }, sender_profile
+
+
+async def create_internet_document(
+    client: NovaPoshtaClient,
+    wizard_data: dict[str, Any],
+    sender_profile: dict[str, str],
+) -> dict[str, Any]:
+    """Create a TTN using collected wizard data."""
+    recipient_profile = await fetch_or_create_recipient_profile(client, wizard_data)
+    save_properties = build_save_properties(
+        wizard_data,
+        sender_profile,
+        recipient_profile,
+    )
+    response = await client.save_internet_document(save_properties)
+    return extract_created_document(response)
+
+
 async def fetch_sender_profile(client: NovaPoshtaClient) -> dict[str, str]:
     """Load sender counterparty and default contact for TTN creation."""
     response = await client.get_sender_counterparties()
@@ -96,7 +249,7 @@ def parse_recipient_name(full_name: str) -> tuple[str, str, str]:
     if len(parts) >= 3:
         return parts[0], parts[1], parts[2]
     if len(parts) == 2:
-        return parts[0], parts[1], ""
+        return parts[1], parts[0], ""
     if len(parts) == 1:
         return parts[0], parts[0], ""
     return "Одержувач", "Одержувач", ""
@@ -207,14 +360,14 @@ def build_save_properties(
     wizard_data: dict[str, Any],
     sender_profile: dict[str, str],
     recipient_profile: dict[str, str],
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """Build InternetDocument.save payload from wizard data."""
     sender_city = wizard_data["sender_city"]
     sender_warehouse = wizard_data["sender_warehouse"]
     recipient_city = wizard_data["recipient_city"]
     recipient_warehouse = wizard_data["recipient_warehouse"]
 
-    return {
+    properties: dict[str, Any] = {
         "PayerType": "Sender",
         "PaymentMethod": "Cash",
         "DateTime": datetime.now().strftime("%d.%m.%Y"),
@@ -236,6 +389,18 @@ def build_save_properties(
         "RecipientsPhone": recipient_profile["phone"],
     }
 
+    cod_amount = wizard_data.get("cod_amount")
+    if cod_amount:
+        properties["BackwardDeliveryData"] = [
+            {
+                "PayerType": "Recipient",
+                "CargoType": "Money",
+                "RedeliveryString": str(cod_amount),
+            },
+        ]
+
+    return properties
+
 
 def build_print_link(document_ref: str, api_key: str) -> str:
     """Build a printable PDF link for a created document."""
@@ -245,15 +410,10 @@ def build_print_link(document_ref: str, api_key: str) -> str:
 def format_ttn_success_message(
     *,
     ttn_number: str,
-    reference: str,
     delivery_cost: str | float | int | None = None,
 ) -> str:
     """Format a success message for a created TTN."""
-    lines = [
-        "✅ ТТН успішно створено!\n",
-        f"Номер: <b>{ttn_number}</b>",
-        f"Reference: <code>{reference}</code>",
-    ]
+    lines = [f"✅ ТТН: <b>{ttn_number}</b>"]
     if delivery_cost is not None and str(delivery_cost).strip() not in {"", "—"}:
         lines.append(f"Вартість доставки: {delivery_cost} грн")
     return "\n".join(lines)
@@ -270,30 +430,6 @@ def extract_created_document(response: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
-def format_review_text(wizard_data: dict[str, Any]) -> str:
-    """Format wizard data for the review step."""
-    sender_city = wizard_data["sender_city"]["name"]
-    sender_warehouse = wizard_data["sender_warehouse"]["description"]
-    recipient_city = wizard_data["recipient_city"]["name"]
-    recipient_warehouse = wizard_data["recipient_warehouse"]["description"]
-
-    return (
-        "<b>Перевірте дані перед створенням ТТН</b>\n\n"
-        f"<b>Відправник</b>\n"
-        f"Місто: {sender_city}\n"
-        f"Відділення: {sender_warehouse}\n\n"
-        f"<b>Одержувач</b>\n"
-        f"ПІБ: {wizard_data['recipient_name']}\n"
-        f"Телефон: {wizard_data['recipient_phone']}\n"
-        f"Місто: {recipient_city}\n"
-        f"Відділення: {recipient_warehouse}\n\n"
-        f"<b>Вантаж</b>\n"
-        f"Опис: {wizard_data['cargo_description']}\n"
-        f"Вага: {wizard_data['weight']} кг\n"
-        f"Оціночна вартість: {wizard_data['declared_cost']} грн"
-    )
-
-
 def normalize_phone(phone: str) -> str | None:
     """Normalize Ukrainian phone numbers to 380XXXXXXXXX."""
     digits = "".join(char for char in phone if char.isdigit())
@@ -302,18 +438,6 @@ def normalize_phone(phone: str) -> str | None:
     if digits.startswith("0") and len(digits) == 10:
         return f"38{digits}"
     return None
-
-
-def parse_weight(value: str) -> str | None:
-    """Validate cargo weight."""
-    normalized = value.replace(",", ".").strip()
-    try:
-        weight = float(normalized)
-    except ValueError:
-        return None
-    if weight <= 0:
-        return None
-    return f"{weight:g}"
 
 
 def parse_declared_cost(value: str) -> str | None:

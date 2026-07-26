@@ -37,9 +37,9 @@ def create_dispatcher(
     )
     dispatcher.update.middleware(DatabaseMiddleware(session_factory))
     dispatcher.include_router(start_router)
+    dispatcher.include_router(menu_router)
     dispatcher.include_router(api_key_router)
     dispatcher.include_router(ttn_router)
-    dispatcher.include_router(menu_router)
     return dispatcher
 
 

@@ -16,6 +16,7 @@ METHOD_SEARCH_SETTLEMENTS = "searchSettlements"
 METHOD_GET_WAREHOUSES = "getWarehouses"
 METHOD_GET_COUNTERPARTIES = "getCounterparties"
 METHOD_GET_CATALOG_COUNTERPARTY = "getCatalogCounterparty"
+METHOD_GET_COUNTERPARTY_ADDRESSES = "getCounterpartyAddresses"
 METHOD_GET_COUNTERPARTY_CONTACT_PERSONS = "getCounterpartyContactPersons"
 METHOD_SAVE = "save"
 

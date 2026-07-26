@@ -8,16 +8,6 @@ class WaitingForApiKey(StatesGroup):
 
 
 class TtnWizard(StatesGroup):
-    """Multi-step TTN creation wizard."""
+    """Single-message TTN creation flow."""
 
-    sender_city = State()
-    sender_warehouse = State()
-    recipient_name = State()
-    recipient_phone = State()
-    recipient_city = State()
-    recipient_warehouse = State()
-    cargo_description = State()
-    weight = State()
-    declared_cost = State()
-    review = State()
-    edit_field = State()
+    order_input = State()

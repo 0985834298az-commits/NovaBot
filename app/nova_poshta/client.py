@@ -13,6 +13,7 @@ from app.nova_poshta.constants import (
     DEFAULT_TIMEOUT_SECONDS,
     METHOD_GET_CATALOG_COUNTERPARTY,
     METHOD_GET_COUNTERPARTIES,
+    METHOD_GET_COUNTERPARTY_ADDRESSES,
     METHOD_GET_COUNTERPARTY_CONTACT_PERSONS,
     METHOD_GET_STATUS,
     METHOD_GET_WAREHOUSES,
@@ -259,6 +260,20 @@ class NovaPoshtaClient:
             MODEL_COUNTERPARTY,
             METHOD_GET_CATALOG_COUNTERPARTY,
             {"Phone": phone},
+        )
+
+    async def get_counterparty_addresses(
+        self,
+        counterparty_ref: str,
+    ) -> dict[str, Any]:
+        """Load addresses linked to a counterparty."""
+        return await self._call(
+            MODEL_COUNTERPARTY,
+            METHOD_GET_COUNTERPARTY_ADDRESSES,
+            {
+                "Ref": counterparty_ref,
+                "Page": SEARCH_PAGE,
+            },
         )
 
     async def save_recipient_counterparty(
