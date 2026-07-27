@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from app.constants import WAYBILL_DELETED_STATUS_CODES, WAYBILL_LIST_ACTIVE_STATUS_CODES
-
-if TYPE_CHECKING:
-    from app.models.waybill import Waybill
 
 _STATUS_LABELS: dict[str, str] = {
     "1": "🟡 Створена",
@@ -47,16 +44,9 @@ def is_deleted_status(status_code: str | int | None) -> bool:
 
 def is_list_active_status(status_code: str | int | None) -> bool:
     """Return True when the TTN should appear in the My Waybills list."""
-    return normalize_status_code(status_code) in WAYBILL_LIST_ACTIVE_STATUS_CODES
-
-
-def filter_list_active_waybills(waybills: list[Waybill]) -> list[Waybill]:
-    """Return only shipments that belong on the My Waybills screen."""
-    return [
-        waybill
-        for waybill in waybills
-        if not waybill.is_archived and is_list_active_status(waybill.shipment_status_code)
-    ]
+    return (
+        normalize_status_code(status_code) in WAYBILL_LIST_ACTIVE_STATUS_CODES
+    )
 
 
 def is_created_status(status_code: str | int | None) -> bool:

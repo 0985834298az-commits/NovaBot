@@ -28,7 +28,7 @@ async def check_active_waybill_statuses(
     async with session_factory() as session:
         waybill_repository = WaybillRepository(session)
         account_repository = NovaPoshtaAccountRepository(session)
-        active_waybills = await waybill_repository.get_all_active()
+        active_waybills = await waybill_repository.get_all_active_shipments()
         if not active_waybills:
             return
 

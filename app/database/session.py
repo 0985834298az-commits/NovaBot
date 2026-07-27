@@ -98,6 +98,18 @@ def _migrate_waybills(connection) -> None:
         connection.execute(
             text("ALTER TABLE waybills ADD COLUMN nova_poshta_account_id BIGINT"),
         )
+    columns = {column["name"] for column in inspector.get_columns("waybills")}
+    if "is_deleted" not in columns:
+        connection.execute(
+            text("ALTER TABLE waybills ADD COLUMN is_deleted BOOLEAN DEFAULT 0 NOT NULL"),
+        )
+        connection.execute(
+            text(
+                "UPDATE waybills "
+                "SET is_deleted = 1 "
+                "WHERE shipment_status_code IN ('2', '3')",
+            ),
+        )
 
 
 def _migrate_payment_cards(connection) -> None:

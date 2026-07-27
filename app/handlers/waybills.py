@@ -81,6 +81,7 @@ async def handle_waybill_sync(
         callback.message,
         waybill_repository,
         order_item_repository,
+        telegram_user_id=callback.from_user.id,
     )
 
 
@@ -106,6 +107,7 @@ async def handle_waybill_edit_products_start(
             callback.message,
             waybill_repository,
             order_item_repository,
+            telegram_user_id=callback.from_user.id,
         )
         return
 

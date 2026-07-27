@@ -14,7 +14,6 @@ from app.nova_poshta.exceptions import NovaPoshtaError
 from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRepository
 from app.repositories.waybill_repository import WaybillRepository
 from app.utils.waybill_status import (
-    filter_list_active_waybills,
     format_status_label,
     is_deleted_status,
     parse_status_documents,
@@ -175,8 +174,7 @@ async def sync_user_waybills(
         logger.warning("Nova Poshta sync skipped for user {}: no active account", telegram_user_id)
         return total
 
-    all_waybills = await waybill_repository.get_all_for_user(telegram_user_id)
-    active_shipments = filter_list_active_waybills(all_waybills)
+    active_shipments = await waybill_repository.get_active_shipments(telegram_user_id)
     if not active_shipments:
         logger.info("Nova Poshta sync skipped for user {}: no locally active shipments", telegram_user_id)
         return total

@@ -10,8 +10,10 @@ from app.constants import (
     WAYBILL_DELETED_STATUS_CODES,
     WAYBILL_INITIAL_STATUS,
     WAYBILL_INITIAL_STATUS_CODE,
+    WAYBILL_LIST_ACTIVE_STATUS_CODES,
 )
 from app.models.waybill import Waybill
+from app.utils.waybill_status import is_deleted_status
 
 
 class WaybillRepository:
@@ -60,6 +62,7 @@ class WaybillRepository:
             nova_poshta_account_id=nova_poshta_account_id,
             shipment_status=shipment_status.strip(),
             shipment_status_code=shipment_status_code.strip(),
+            is_deleted=False,
             is_archived=False,
         )
         self._session.add(waybill)
@@ -76,10 +79,30 @@ class WaybillRepository:
         )
         return list(result.scalars().all())
 
-    async def get_all_active(self) -> list[Waybill]:
-        """Return all visible waybills across users."""
+    async def get_active_shipments(self, telegram_user_id: int) -> list[Waybill]:
+        """Return active shipments for the My Waybills screen."""
         result = await self._session.execute(
-            select(Waybill).order_by(Waybill.telegram_user_id.asc(), Waybill.created_at.asc()),
+            select(Waybill)
+            .where(
+                Waybill.telegram_user_id == telegram_user_id,
+                Waybill.is_deleted.is_(False),
+                Waybill.is_archived.is_(False),
+                Waybill.shipment_status_code.in_(WAYBILL_LIST_ACTIVE_STATUS_CODES),
+            )
+            .order_by(Waybill.created_at.asc(), Waybill.id.asc()),
+        )
+        return list(result.scalars().all())
+
+    async def get_all_active_shipments(self) -> list[Waybill]:
+        """Return active shipments across all users."""
+        result = await self._session.execute(
+            select(Waybill)
+            .where(
+                Waybill.is_deleted.is_(False),
+                Waybill.is_archived.is_(False),
+                Waybill.shipment_status_code.in_(WAYBILL_LIST_ACTIVE_STATUS_CODES),
+            )
+            .order_by(Waybill.telegram_user_id.asc(), Waybill.created_at.asc(), Waybill.id.asc()),
         )
         return list(result.scalars().all())
 
@@ -195,6 +218,7 @@ class WaybillRepository:
         waybill.declared_cost = declared_cost.strip()
         waybill.shipment_status = shipment_status.strip()
         waybill.shipment_status_code = shipment_status_code.strip()
+        waybill.is_deleted = is_deleted_status(shipment_status_code)
         waybill.is_archived = False
         waybill.archived_at = None
         waybill.last_checked_at = synced_at
@@ -215,6 +239,7 @@ class WaybillRepository:
         """Update shipment status from tracking API."""
         waybill.shipment_status = shipment_status.strip()
         waybill.shipment_status_code = shipment_status_code.strip()
+        waybill.is_deleted = is_deleted_status(shipment_status_code)
         waybill.last_checked_at = last_checked_at
         waybill.is_archived = False
         waybill.archived_at = None

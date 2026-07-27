@@ -37,6 +37,7 @@ class Waybill(Base):
     declared_cost: Mapped[str] = mapped_column(String(32), nullable=False)
     shipment_status: Mapped[str] = mapped_column(String(255), nullable=False)
     shipment_status_code: Mapped[str] = mapped_column(String(16), nullable=False)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     archived_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),

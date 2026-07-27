@@ -12,7 +12,6 @@ from app.repositories.order_item_repository import OrderItemRepository
 from app.repositories.waybill_repository import WaybillRepository
 from app.services.order_service import format_waybill_details
 from app.services.waybill_sync_service import sync_user_waybills
-from app.utils.waybill_status import filter_list_active_waybills
 
 
 async def _run_sync(
@@ -34,34 +33,71 @@ async def _run_sync(
     return active_account.account_name not in result.failed_accounts
 
 
+def _log_waybill_render_state(
+    *,
+    telegram_user_id: int,
+    all_shipments: list,
+    active_shipments: list,
+) -> None:
+    """Log shipment counts and per-row fields before rendering My Waybills."""
+    statuses = [waybill.shipment_status_code for waybill in all_shipments]
+    deleted_flags = [waybill.is_deleted for waybill in all_shipments]
+    logger.info(
+        "My Waybills render for user {}: total_in_db={} active={} statuses={} deleted_flags={}",
+        telegram_user_id,
+        len(all_shipments),
+        len(active_shipments),
+        statuses,
+        deleted_flags,
+    )
+    for waybill in all_shipments:
+        logger.info(
+            "My Waybills shipment: id={} ttn={} status={} is_deleted={} is_archived={}",
+            waybill.id,
+            waybill.ttn_number,
+            waybill.shipment_status_code,
+            waybill.is_deleted,
+            waybill.is_archived,
+        )
+
+
 async def render_my_waybills(
     message: Message,
     waybill_repository: WaybillRepository,
     order_item_repository: OrderItemRepository,
     *,
+    telegram_user_id: int | None = None,
     nova_poshta_account_repository: NovaPoshtaAccountRepository | None = None,
     sync_before_show: bool = False,
 ) -> None:
     """Render the My Waybills screen. This is the only waybill list renderer."""
-    if message.from_user is None:
-        return
+    user_id = telegram_user_id
+    if user_id is None:
+        if message.from_user is None:
+            return
+        user_id = message.from_user.id
 
     if sync_before_show and nova_poshta_account_repository is not None:
         try:
             await _run_sync(
-                telegram_user_id=message.from_user.id,
+                telegram_user_id=user_id,
                 nova_poshta_account_repository=nova_poshta_account_repository,
                 waybill_repository=waybill_repository,
             )
         except Exception as exc:
             logger.exception(
                 "Automatic waybill sync failed for user {}: {}",
-                message.from_user.id,
+                user_id,
                 exc,
             )
 
-    shipments = await waybill_repository.get_all_for_user(message.from_user.id)
-    active_shipments = filter_list_active_waybills(shipments)
+    all_shipments = await waybill_repository.get_all_for_user(user_id)
+    active_shipments = await waybill_repository.get_active_shipments(user_id)
+    _log_waybill_render_state(
+        telegram_user_id=user_id,
+        all_shipments=all_shipments,
+        active_shipments=active_shipments,
+    )
 
     if not active_shipments:
         await message.answer(
