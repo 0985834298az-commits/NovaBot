@@ -16,11 +16,12 @@ from app.constants import (
     MSG_CARD_EDIT_NUMBER,
     MSG_CARD_EDIT_OWNER,
     MSG_CARD_INVALID_NUMBER,
-    MSG_CARD_NOT_FOUND_IN_NP,
     MSG_CARD_SAVED,
     MSG_CARD_UPDATED,
     MSG_CARDS_EMPTY,
     MSG_CARDS_FOOTER,
+    MSG_CARDS_IMPORT_EMPTY,
+    MSG_CARDS_IMPORT_SUCCESS,
     MSG_CARDS_LIST_HEADER,
     MSG_MAIN_MENU,
     MSG_NO_ACTIVE_NP_ACCOUNT,
@@ -30,6 +31,7 @@ from app.constants import (
     CALLBACK_CARD_DELETE_NO,
     CALLBACK_CARD_DELETE_YES,
     CALLBACK_CARD_EDIT,
+    CALLBACK_CARD_IMPORT,
     CALLBACK_CARD_SELECT,
 )
 from app.handlers.states import PaymentCardWizard
@@ -40,32 +42,13 @@ from app.keyboards import (
     build_payment_cards_footer_keyboard,
 )
 from app.models.payment_card import PaymentCard
-from app.nova_poshta import NovaPoshtaClient
 from app.nova_poshta.exceptions import NovaPoshtaError
 from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRepository
 from app.repositories.payment_card_repository import PaymentCardRepository
-from app.services.payment_card_service import refresh_card_ref, resolve_card_ref
+from app.services.payment_card_service import import_payment_cards_from_nova_poshta
 from app.utils.payment_card import format_payment_card, validate_card_number
 
 router = Router(name="payment_cards")
-
-
-async def _resolve_card_ref_for_user(
-    *,
-    telegram_user_id: int,
-    card_number: str,
-    nova_poshta_account_repository: NovaPoshtaAccountRepository,
-) -> str:
-    active_account = await nova_poshta_account_repository.get_active_account(telegram_user_id)
-    if active_account is None:
-        raise NovaPoshtaError(MSG_NO_ACTIVE_NP_ACCOUNT)
-
-    async with NovaPoshtaClient(active_account.api_key) as client:
-        return await resolve_card_ref(
-            client,
-            card_number,
-            api_key_name=active_account.account_name,
-        )
 
 
 def _parse_card_id(callback_data: str, prefix: str) -> int | None:
@@ -121,6 +104,45 @@ async def begin_payment_cards_list(
     await show_payment_cards_list(message, payment_card_repository)
 
 
+@router.callback_query(F.data == CALLBACK_CARD_IMPORT)
+async def handle_payment_card_import(
+    callback: CallbackQuery,
+    payment_card_repository: PaymentCardRepository,
+    nova_poshta_account_repository: NovaPoshtaAccountRepository,
+) -> None:
+    if callback.message is None or callback.from_user is None:
+        return
+
+    active_account = await nova_poshta_account_repository.get_active_account(
+        callback.from_user.id,
+    )
+    if active_account is None:
+        await callback.answer()
+        await callback.message.answer(MSG_NO_ACTIVE_NP_ACCOUNT)
+        return
+
+    await callback.answer()
+    try:
+        imported_count = await import_payment_cards_from_nova_poshta(
+            telegram_user_id=callback.from_user.id,
+            api_key=active_account.api_key,
+            payment_card_repository=payment_card_repository,
+            api_key_name=active_account.account_name,
+        )
+    except NovaPoshtaError as exc:
+        await callback.message.answer(str(exc))
+        return
+
+    if imported_count == 0:
+        await callback.message.answer(MSG_CARDS_IMPORT_EMPTY)
+    else:
+        await callback.message.answer(
+            MSG_CARDS_IMPORT_SUCCESS.format(count=imported_count),
+        )
+
+    await show_payment_cards_list(callback.message, payment_card_repository)
+
+
 @router.callback_query(F.data == CALLBACK_CARD_ADD)
 async def handle_payment_card_add_start(
     callback: CallbackQuery,
@@ -168,7 +190,6 @@ async def handle_payment_card_add_number(
     message: Message,
     state: FSMContext,
     payment_card_repository: PaymentCardRepository,
-    nova_poshta_account_repository: NovaPoshtaAccountRepository,
 ) -> None:
     if message.from_user is None or message.text is None:
         return
@@ -190,20 +211,10 @@ async def handle_payment_card_add_number(
         await message.answer(MSG_CARD_ASK_OWNER)
         return
 
-    try:
-        card_ref = await _resolve_card_ref_for_user(
-            telegram_user_id=message.from_user.id,
-            card_number=card_number,
-            nova_poshta_account_repository=nova_poshta_account_repository,
-        )
-    except NovaPoshtaError as exc:
-        await message.answer(str(exc))
-        return
-
     await payment_card_repository.create_card(
         telegram_user_id=message.from_user.id,
         card_name=card_name,
-        card_ref=card_ref,
+        card_ref="",
         owner_name=owner_name,
         card_number=card_number,
     )
@@ -217,7 +228,6 @@ async def handle_payment_card_add_number(
 async def handle_payment_card_select(
     callback: CallbackQuery,
     payment_card_repository: PaymentCardRepository,
-    nova_poshta_account_repository: NovaPoshtaAccountRepository,
 ) -> None:
     if callback.data is None or callback.message is None or callback.from_user is None:
         return
@@ -232,24 +242,6 @@ async def handle_payment_card_select(
     if card is None:
         await callback.message.answer(MSG_CARDS_EMPTY)
         return
-
-    if not card.card_ref.strip():
-        active_account = await nova_poshta_account_repository.get_active_account(
-            callback.from_user.id,
-        )
-        if active_account is None:
-            await callback.message.answer(MSG_NO_ACTIVE_NP_ACCOUNT)
-            return
-        try:
-            card = await refresh_card_ref(
-                card=card,
-                api_key=active_account.api_key,
-                payment_card_repository=payment_card_repository,
-                api_key_name=active_account.account_name,
-            )
-        except NovaPoshtaError as exc:
-            await callback.message.answer(str(exc))
-            return
 
     await callback.message.answer(MSG_CARD_ACTIVE_CHANGED)
     await show_payment_cards_list(callback.message, payment_card_repository)
@@ -315,8 +307,9 @@ async def handle_payment_card_delete_cancel(callback: CallbackQuery) -> None:
 async def handle_payment_card_edit_start(
     callback: CallbackQuery,
     state: FSMContext,
+    payment_card_repository: PaymentCardRepository,
 ) -> None:
-    if callback.data is None or callback.message is None:
+    if callback.data is None or callback.message is None or callback.from_user is None:
         return
 
     card_id = _parse_card_id(callback.data, CALLBACK_CARD_EDIT)
@@ -324,9 +317,14 @@ async def handle_payment_card_edit_start(
         await callback.answer("Некоректна картка", show_alert=True)
         return
 
+    card = await payment_card_repository.get_by_id(card_id, callback.from_user.id)
+    if card is None:
+        await callback.answer("Некоректна картка", show_alert=True)
+        return
+
     await state.clear()
     await state.set_state(PaymentCardWizard.edit_name)
-    await state.update_data(card_id=card_id)
+    await state.update_data(card_id=card_id, card_ref=card.card_ref)
     await callback.answer()
     await callback.message.answer(MSG_CARD_EDIT_NAME)
 
@@ -358,7 +356,6 @@ async def handle_payment_card_edit_number(
     message: Message,
     state: FSMContext,
     payment_card_repository: PaymentCardRepository,
-    nova_poshta_account_repository: NovaPoshtaAccountRepository,
 ) -> None:
     if message.from_user is None or message.text is None:
         return
@@ -372,19 +369,10 @@ async def handle_payment_card_edit_number(
     card_id = data.get("card_id")
     card_name = str(data.get("card_name") or "").strip()
     owner_name = str(data.get("owner_name") or "").strip()
+    card_ref = str(data.get("card_ref") or "").strip()
     if card_id is None or not card_name or not owner_name:
         await state.clear()
         await message.answer(MSG_CARDS_EMPTY, reply_markup=build_main_menu_keyboard())
-        return
-
-    try:
-        card_ref = await _resolve_card_ref_for_user(
-            telegram_user_id=message.from_user.id,
-            card_number=card_number,
-            nova_poshta_account_repository=nova_poshta_account_repository,
-        )
-    except NovaPoshtaError as exc:
-        await message.answer(str(exc))
         return
 
     updated = await payment_card_repository.update_card(

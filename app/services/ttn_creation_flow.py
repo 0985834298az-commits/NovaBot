@@ -47,7 +47,7 @@ from app.services.nova_poshta_account_service import ensure_active_account_sende
 from app.services.order_service import create_ttn_with_order_items
 from app.services.payment_card_service import (
     apply_active_card_to_wizard,
-    ensure_active_card_ref,
+    is_active_card_ready,
 )
 from app.services.sender_cache import get_sender_cache_error
 from app.services.waybill_sync_service import sync_user_waybills
@@ -223,7 +223,7 @@ async def _create_ttn_from_pending(
     source = pending.get("source")
 
     active_card = await payment_card_repository.get_active_card(message.from_user.id)
-    if active_card is None:
+    if not is_active_card_ready(active_card):
         await message.answer(
             MSG_NO_ACTIVE_PAYMENT_CARD,
             reply_markup=build_main_menu_keyboard(),
@@ -252,13 +252,6 @@ async def _create_ttn_from_pending(
         return False
 
     api_key, sender_location = prepared
-    active_account = await nova_poshta_account_repository.get_active_account(message.from_user.id)
-    active_card = await ensure_active_card_ref(
-        active_card=active_card,
-        api_key=api_key,
-        payment_card_repository=payment_card_repository,
-        api_key_name=active_account.account_name if active_account else "",
-    )
     await message.answer(MSG_TTN_CREATING)
 
     try:
@@ -461,7 +454,7 @@ async def process_ttn_account_selection(
         return
 
     active_card = await payment_card_repository.get_active_card(message.from_user.id)
-    if active_card is None:
+    if not is_active_card_ready(active_card):
         await state.clear()
         await message.answer(
             MSG_NO_ACTIVE_PAYMENT_CARD,

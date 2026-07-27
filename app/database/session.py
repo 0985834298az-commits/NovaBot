@@ -137,6 +137,24 @@ def _migrate_payment_cards(connection) -> None:
         connection.execute(
             text("ALTER TABLE payment_cards ADD COLUMN card_ref VARCHAR(36) DEFAULT ''"),
         )
+    columns = {column["name"] for column in inspector.get_columns("payment_cards")}
+    if "masked_number" not in columns:
+        connection.execute(
+            text("ALTER TABLE payment_cards ADD COLUMN masked_number VARCHAR(32) DEFAULT ''"),
+        )
+        connection.execute(
+            text(
+                "UPDATE payment_cards "
+                "SET masked_number = SUBSTR(card_number, 1, 4) || ' ** ** ' || SUBSTR(card_number, -4) "
+                "WHERE length(card_number) = 16 "
+                "AND (masked_number IS NULL OR masked_number = '')",
+            ),
+        )
+    columns = {column["name"] for column in inspector.get_columns("payment_cards")}
+    if "imported_at" not in columns:
+        connection.execute(
+            text("ALTER TABLE payment_cards ADD COLUMN imported_at DATETIME"),
+        )
 
 
 async def get_session(

@@ -14,6 +14,18 @@ def _normalize_digits(value: str | None) -> str:
     return "".join(char for char in str(value or "") if char.isdigit())
 
 
+def extract_card_name(item: dict[str, Any]) -> str:
+    for key in ("Name", "CardName", "Title", "Description"):
+        value = str(item.get(key) or "").strip()
+        if not value:
+            continue
+        digits = _normalize_digits(value)
+        if len(digits) == 16 and digits == value.replace(" ", ""):
+            continue
+        return value
+    return ""
+
+
 def extract_card_ref(item: dict[str, Any]) -> str:
     for key in ("Ref", "PaymentCard", "PaymentCardRef", "CardRef"):
         ref = str(item.get(key) or "").strip()

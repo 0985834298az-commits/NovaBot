@@ -20,6 +20,7 @@ from app.repositories.recipient_repository import RecipientRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.waybill_repository import WaybillRepository
 from app.services.nova_poshta_account_service import ensure_active_account_sender_cache
+from app.services.payment_card_service import is_active_card_ready
 from app.services.sender_cache import get_sender_cache_error
 from app.services.ttn_creation_flow import process_ttn_account_selection
 from app.services.ttn_service import parse_ttn_order_message
@@ -47,7 +48,7 @@ async def begin_ttn_wizard(
         return
 
     active_card = await payment_card_repository.get_active_card(message.from_user.id)
-    if active_card is None:
+    if not is_active_card_ready(active_card):
         await message.answer(
             MSG_NO_ACTIVE_PAYMENT_CARD,
             reply_markup=build_main_menu_keyboard(),

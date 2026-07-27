@@ -56,6 +56,7 @@ from app.services.nova_poshta_account_service import (
     get_active_api_key,
 )
 from app.services.sender_cache import get_sender_cache_error
+from app.services.payment_card_service import is_active_card_ready
 from app.services.ttn_creation_flow import process_ttn_account_selection
 from app.services.ttn_service import (
     format_recipient_card,
@@ -185,7 +186,7 @@ async def handle_recipient_create_ttn(
         return
 
     active_card = await payment_card_repository.get_active_card(callback.from_user.id)
-    if active_card is None:
+    if not is_active_card_ready(active_card):
         await callback.answer()
         await callback.message.answer(MSG_NO_ACTIVE_PAYMENT_CARD)
         return
