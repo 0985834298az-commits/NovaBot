@@ -121,3 +121,10 @@ class NovaPoshtaAccountRepository:
                 await self.set_active_account(remaining_accounts[0].id, telegram_user_id)
 
         return True
+
+    async def get_distinct_user_ids(self) -> list[int]:
+        """Return Telegram user ids that have at least one Nova Poshta account."""
+        result = await self._session.execute(
+            select(NovaPoshtaAccount.telegram_user_id).distinct(),
+        )
+        return [int(user_id) for user_id in result.scalars().all()]

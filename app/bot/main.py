@@ -27,7 +27,7 @@ from app.handlers import (
     ttn_router,
     waybills_router,
 )
-from app.services.waybill_tracker import run_waybill_status_checker
+from app.services.waybill_tracker import run_background_waybill_sync
 
 
 def create_bot(settings: Settings) -> Bot:
@@ -75,7 +75,7 @@ async def on_startup(settings: Settings) -> tuple[Bot, Dispatcher]:
     dispatcher["session_factory"] = session_factory
 
     dispatcher["waybill_tracker_task"] = asyncio.create_task(
-        run_waybill_status_checker(session_factory),
+        run_background_waybill_sync(session_factory),
     )
 
     logger.info("NovaBot {} started successfully", VERSION)

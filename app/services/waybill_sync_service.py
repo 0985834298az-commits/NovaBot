@@ -215,3 +215,28 @@ async def sync_user_waybills(
         total.failed_accounts.append(active_account.account_name)
 
     return total
+
+
+async def sync_all_users_waybills(
+    *,
+    account_repository: NovaPoshtaAccountRepository,
+    waybill_repository: WaybillRepository,
+) -> None:
+    """Synchronize shipments for every user with a Nova Poshta account."""
+    user_ids = await account_repository.get_distinct_user_ids()
+    if not user_ids:
+        return
+
+    logger.info("Starting background waybill sync for {} user(s)", len(user_ids))
+    for telegram_user_id in user_ids:
+        try:
+            await sync_user_waybills(
+                telegram_user_id=telegram_user_id,
+                account_repository=account_repository,
+                waybill_repository=waybill_repository,
+            )
+        except Exception:
+            logger.exception(
+                "Background waybill sync failed for user {}",
+                telegram_user_id,
+            )

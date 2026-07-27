@@ -21,6 +21,7 @@ from app.nova_poshta.constants import (
     METHOD_GET_STATUS,
     METHOD_GET_STATUS_DOCUMENTS,
     METHOD_GET_WAREHOUSES,
+    METHOD_DELETE,
     METHOD_SAVE,
     METHOD_UPDATE,
     METHOD_SEARCH_SETTLEMENTS,
@@ -450,5 +451,18 @@ class NovaPoshtaClient:
         if response.get("success") is not True:
             errors = [str(error) for error in response.get("errors") or []]
             msg = "; ".join(errors) or "Nova Poshta failed to create TTN"
+            raise NovaPoshtaApiError(msg, errors=errors)
+        return response
+
+    async def delete_internet_document(self, document_ref: str) -> dict[str, Any]:
+        """Delete an express waybill through InternetDocument.delete."""
+        response = await self._call(
+            MODEL_INTERNET_DOCUMENT,
+            METHOD_DELETE,
+            {"DocumentRefs": [document_ref.strip()]},
+        )
+        if response.get("success") is not True:
+            errors = [str(error) for error in response.get("errors") or []]
+            msg = "; ".join(errors) or "Nova Poshta failed to delete TTN"
             raise NovaPoshtaApiError(msg, errors=errors)
         return response

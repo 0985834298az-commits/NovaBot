@@ -16,7 +16,6 @@ from app.constants import (
     CALLBACK_NP_ACCOUNT_DETAIL_BACK,
     CALLBACK_NP_ACCOUNT_OPEN,
     CALLBACK_NP_ACCOUNT_RENAME,
-    CALLBACK_NP_ACCOUNT_SYNC,
     MSG_NP_ACCOUNT_ACTIVE_CHANGED,
     MSG_NP_ACCOUNT_API_UPDATED,
     MSG_NP_ACCOUNT_DELETE_CONFIRM,
@@ -31,9 +30,6 @@ from app.constants import (
     MSG_NP_ASK_ACCOUNT_NAME,
     MSG_NP_ASK_API_KEY,
     MSG_NP_INVALID_API_KEY,
-    MSG_SYNC_COMPLETE,
-    MSG_SYNC_FAILED,
-    MSG_SYNC_IN_PROGRESS,
 )
 from app.handlers.states import NovaPoshtaAccountWizard
 from app.keyboards import (
@@ -51,7 +47,6 @@ from app.services.nova_poshta_account_service import (
     format_nova_poshta_account_with_usage,
 )
 from app.services.sender_cache import ensure_sender_cache, invalidate_sender_cache
-from app.services.waybill_sync_service import sync_user_waybills
 
 router = Router(name="np_accounts")
 
@@ -77,25 +72,10 @@ async def show_nova_poshta_accounts_list(
     waybill_repository: WaybillRepository,
     *,
     accounts: list[NovaPoshtaAccount] | None = None,
-    sync_before_show: bool = False,
 ) -> None:
     """Render saved Nova Poshta accounts for the current Telegram user."""
     if message.from_user is None:
         return
-
-    if sync_before_show:
-        try:
-            await sync_user_waybills(
-                telegram_user_id=message.from_user.id,
-                account_repository=account_repository,
-                waybill_repository=waybill_repository,
-            )
-        except Exception as exc:
-            logger.exception(
-                "Automatic Nova Poshta sync failed for user {}: {}",
-                message.from_user.id,
-                exc,
-            )
 
     if accounts is None:
         accounts = await account_repository.get_all_accounts(message.from_user.id)
@@ -150,8 +130,6 @@ async def begin_nova_poshta_accounts_list(
     state: FSMContext,
     account_repository: NovaPoshtaAccountRepository,
     waybill_repository: WaybillRepository,
-    *,
-    sync_before_show: bool = False,
 ) -> None:
     """Open the Nova Poshta accounts section."""
     await state.clear()
@@ -159,7 +137,6 @@ async def begin_nova_poshta_accounts_list(
         message,
         account_repository,
         waybill_repository,
-        sync_before_show=sync_before_show,
     )
 
 
@@ -518,54 +495,4 @@ async def handle_nova_poshta_accounts_back(
     await callback.message.answer(
         MSG_MAIN_MENU,
         reply_markup=build_main_menu_keyboard(),
-    )
-
-
-@router.callback_query(F.data == CALLBACK_NP_ACCOUNT_SYNC)
-async def handle_nova_poshta_account_sync(
-    callback: CallbackQuery,
-    account_repository: NovaPoshtaAccountRepository,
-    waybill_repository: WaybillRepository,
-) -> None:
-    if callback.message is None or callback.from_user is None:
-        return
-
-    await callback.answer()
-    progress_message = await callback.message.answer(MSG_SYNC_IN_PROGRESS)
-    try:
-        result = await sync_user_waybills(
-            telegram_user_id=callback.from_user.id,
-            account_repository=account_repository,
-            waybill_repository=waybill_repository,
-        )
-    except Exception as exc:
-        logger.exception(
-            "Manual Nova Poshta sync failed for user {}: {}",
-            callback.from_user.id,
-            exc,
-        )
-        await progress_message.edit_text(MSG_SYNC_FAILED)
-        return
-
-    active_account = await account_repository.get_active_account(callback.from_user.id)
-    if active_account and active_account.account_name in result.failed_accounts:
-        logger.error(
-            "Manual Nova Poshta sync failed for user {}: active account {} failed",
-            callback.from_user.id,
-            active_account.account_name,
-        )
-        await progress_message.edit_text(MSG_SYNC_FAILED)
-        return
-
-    await progress_message.edit_text(
-        MSG_SYNC_COMPLETE.format(
-            added=result.added,
-            updated=result.updated,
-            deleted=result.deleted,
-        ),
-    )
-    await show_nova_poshta_accounts_list(
-        callback.message,
-        account_repository,
-        waybill_repository,
     )

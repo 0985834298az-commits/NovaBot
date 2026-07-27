@@ -45,6 +45,7 @@ from app.services.account_selection_service import (
 )
 from app.services.nova_poshta_account_service import ensure_active_account_sender_cache
 from app.services.order_service import create_ttn_with_order_items
+from app.services.waybill_sync_service import sync_user_waybills
 from app.services.sender_cache import get_sender_cache_error
 from app.services.ttn_service import (
     TtnOrderInput,
@@ -315,6 +316,19 @@ async def _create_ttn_from_pending(
     if reference:
         print_link = build_print_link(reference, api_key)
         await message.answer(MSG_TTN_PRINT_LINK.format(link=print_link))
+
+    try:
+        await sync_user_waybills(
+            telegram_user_id=message.from_user.id,
+            account_repository=nova_poshta_account_repository,
+            waybill_repository=waybill_repository,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Automatic waybill sync failed after TTN creation for user {}: {}",
+            message.from_user.id,
+            exc,
+        )
     return True
 
 

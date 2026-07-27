@@ -59,8 +59,7 @@ async def handle_my_waybills(
         message,
         waybill_repository,
         order_item_repository,
-        nova_poshta_account_repository=nova_poshta_account_repository,
-        sync_before_show=True,
+        nova_poshta_account_repository,
     )
 
 
@@ -102,7 +101,6 @@ async def handle_nova_poshta_accounts(
         state,
         nova_poshta_account_repository,
         waybill_repository,
-        sync_before_show=True,
     )
 
 

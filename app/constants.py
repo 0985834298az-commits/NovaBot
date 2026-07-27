@@ -52,20 +52,15 @@ WAYBILL_LIST_ACTIVE_STATUS_CODES = (
 )
 WAYBILL_CHECK_INTERVAL_SECONDS = 300
 
-BTN_SYNC = "🔄 Синхронізувати"
-CALLBACK_WAYBILL_SYNC = "waybill:sync"
-CALLBACK_NP_ACCOUNT_SYNC = "np_account:sync"
-MSG_SYNC_IN_PROGRESS = "🔄 Синхронізація..."
-MSG_SYNC_COMPLETE = (
-    "✅ Синхронізацію завершено\n\n"
-    "Додано: {added}\n\n"
-    "Оновлено: {updated}\n\n"
-    "Видалено: {deleted}"
-)
-MSG_SYNC_FAILED = (
-    "⚠️ Не вдалося синхронізувати дані.\n\n"
-    "Повторіть пізніше."
-)
+BTN_WAYBILL_DELETE = "🗑️ Видалити ТТН"
+BTN_WAYBILL_DELETE_YES = "✅ Так"
+BTN_WAYBILL_DELETE_NO = "❌ Скасувати"
+CALLBACK_WAYBILL_DELETE = "waybill:delete"
+CALLBACK_WAYBILL_DELETE_YES = "waybill:delete:yes"
+CALLBACK_WAYBILL_DELETE_NO = "waybill:delete:no"
+MSG_WAYBILL_DELETE_CONFIRM = "❓ Ви дійсно хочете видалити ТТН?"
+MSG_WAYBILL_DELETED = "✅ ТТН видалено."
+MSG_WAYBILL_DELETE_FAILED = "❌ Не вдалося видалити ТТН:\n\n{error}"
 
 MSG_RECIPIENTS_EMPTY = "👥 Список одержувачів порожній."
 MSG_RECIPIENTS_LIST_HEADER = "👥 Одержувачі:"
