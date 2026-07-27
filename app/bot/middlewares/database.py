@@ -32,7 +32,9 @@ class DatabaseMiddleware(BaseMiddleware):
             data["payment_card_repository"] = PaymentCardRepository(session)
             data["waybill_repository"] = WaybillRepository(session)
             data["order_item_repository"] = OrderItemRepository(session)
-            data["nova_poshta_account_repository"] = NovaPoshtaAccountRepository(session)
+            account_repository = NovaPoshtaAccountRepository(session)
+            data["account_repository"] = account_repository
+            data["nova_poshta_account_repository"] = account_repository
 
             try:
                 result = await handler(event, data)
