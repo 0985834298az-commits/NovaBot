@@ -85,7 +85,10 @@ def _extract_warehouse_number(document: dict[str, Any]) -> str:
 
 
 def _map_remote_document(document: dict[str, Any]) -> dict[str, str]:
-    status_code = normalize_status_code(document.get("StateId") or document.get("StatusCode"))
+    if _first_value(document, "DeletionMark") in {"1", "true", "True"}:
+        status_code = "2"
+    else:
+        status_code = normalize_status_code(document.get("StateId") or document.get("StatusCode"))
     delivery_cost = _first_value(document, "CostOnSite", "DocumentCost") or None
     return {
         "ttn_number": _first_value(document, "IntDocNumber", "Number"),

@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.models.waybill import Waybill
-
 
 def build_waybill_create_fields(
     *,
@@ -34,17 +32,3 @@ def build_waybill_create_fields(
         "declared_cost": str(wizard_data["declared_cost"]),
         "nova_poshta_account_id": nova_poshta_account_id,
     }
-
-
-def format_active_waybill_line(index: int, waybill: Waybill) -> str:
-    """Format one active waybill row with a dynamic display number."""
-    return f"№{index} {waybill.recipient_name}"
-
-
-def format_active_waybills_message(waybills: list[Waybill]) -> str:
-    """Format the active waybills list for Telegram."""
-    lines = [
-        format_active_waybill_line(index, waybill)
-        for index, waybill in enumerate(waybills, start=1)
-    ]
-    return "\n\n".join(lines)

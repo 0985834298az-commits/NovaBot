@@ -44,18 +44,11 @@ MSG_WAYBILLS_FOOTER = "📄 Керування накладними:"
 WAYBILL_INITIAL_STATUS = "🟡 Створена"
 WAYBILL_INITIAL_STATUS_CODE = "1"
 WAYBILL_DELETED_STATUS_CODES = frozenset({"2", "3"})
-WAYBILL_LIST_ACTIVE_STATUS_CODES = frozenset(
-    {
-        "1",  # 🟡 Створена
-        "4",
-        "5",
-        "6",
-        "41",
-        "104",  # 🚚 У дорозі
-        "7",
-        "8",
-        "105",  # 📦 Прибула у відділення
-    }
+SHIPMENT_STATUS_CREATED = frozenset({"1"})
+SHIPMENT_STATUS_IN_TRANSIT = frozenset({"4", "5", "6", "41", "104"})
+SHIPMENT_STATUS_ARRIVED = frozenset({"7", "8", "105"})
+WAYBILL_LIST_ACTIVE_STATUS_CODES = (
+    SHIPMENT_STATUS_CREATED | SHIPMENT_STATUS_IN_TRANSIT | SHIPMENT_STATUS_ARRIVED
 )
 WAYBILL_CHECK_INTERVAL_SECONDS = 300
 

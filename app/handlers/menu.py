@@ -15,7 +15,7 @@ from app.handlers.settings import show_settings
 from app.handlers.nova_poshta_accounts import begin_nova_poshta_accounts_list
 from app.handlers.payment_cards import begin_payment_cards_list
 from app.handlers.recipients import begin_recipients_list
-from app.handlers.waybills import show_active_waybills
+from app.services.waybill_list_service import render_my_waybills
 from app.handlers.ttn import begin_ttn_wizard
 from app.keyboards import build_main_menu_keyboard
 from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRepository
@@ -55,7 +55,7 @@ async def handle_my_waybills(
 ) -> None:
     """Show active waybills."""
     await state.clear()
-    await show_active_waybills(
+    await render_my_waybills(
         message,
         waybill_repository,
         order_item_repository,

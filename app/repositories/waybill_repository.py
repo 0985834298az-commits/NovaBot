@@ -10,7 +10,6 @@ from app.constants import (
     WAYBILL_DELETED_STATUS_CODES,
     WAYBILL_INITIAL_STATUS,
     WAYBILL_INITIAL_STATUS_CODE,
-    WAYBILL_LIST_ACTIVE_STATUS_CODES,
 )
 from app.models.waybill import Waybill
 
@@ -68,14 +67,11 @@ class WaybillRepository:
         await self._session.refresh(waybill)
         return waybill
 
-    async def get_active(self, telegram_user_id: int) -> list[Waybill]:
-        """Return in-progress waybills shown in the My Waybills list."""
+    async def get_all_for_user(self, telegram_user_id: int) -> list[Waybill]:
+        """Return all waybills for a Telegram user ordered by creation time."""
         result = await self._session.execute(
             select(Waybill)
-            .where(
-                Waybill.telegram_user_id == telegram_user_id,
-                Waybill.shipment_status_code.in_(WAYBILL_LIST_ACTIVE_STATUS_CODES),
-            )
+            .where(Waybill.telegram_user_id == telegram_user_id)
             .order_by(Waybill.created_at.asc(), Waybill.id.asc()),
         )
         return list(result.scalars().all())

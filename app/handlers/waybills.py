@@ -12,20 +12,12 @@ from app.constants import (
     MSG_SYNC_IN_PROGRESS,
     MSG_TTN_ASK_PRODUCTS,
     MSG_TTN_INVALID_PRODUCTS,
-    MSG_WAYBILLS_EMPTY,
-    MSG_WAYBILLS_FOOTER,
-    MSG_WAYBILLS_LIST_HEADER,
 )
 from app.handlers.states import WaybillWizard
-from app.keyboards import (
-    build_main_menu_keyboard,
-    build_waybill_actions_keyboard,
-    build_waybills_footer_keyboard,
-)
 from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRepository
 from app.repositories.order_item_repository import OrderItemRepository
 from app.repositories.waybill_repository import WaybillRepository
-from app.services.order_service import format_waybill_details
+from app.services.waybill_list_service import render_my_waybills
 from app.services.waybill_sync_service import sync_user_waybills
 from app.utils.order_items import parse_product_lines
 from app.utils.waybill_status import is_list_active_status
@@ -41,77 +33,6 @@ def _parse_waybill_id(callback_data: str, prefix: str) -> int | None:
         return int(raw_id)
     except ValueError:
         return None
-
-
-async def _run_sync(
-    *,
-    telegram_user_id: int,
-    nova_poshta_account_repository: NovaPoshtaAccountRepository,
-    waybill_repository: WaybillRepository,
-) -> bool:
-    """Synchronize waybills silently and return False when the active account failed."""
-    active_account = await nova_poshta_account_repository.get_active_account(telegram_user_id)
-    if active_account is None:
-        return True
-
-    result = await sync_user_waybills(
-        telegram_user_id=telegram_user_id,
-        account_repository=nova_poshta_account_repository,
-        waybill_repository=waybill_repository,
-    )
-    return active_account.account_name not in result.failed_accounts
-
-
-async def show_active_waybills(
-    message: Message,
-    waybill_repository: WaybillRepository,
-    order_item_repository: OrderItemRepository,
-    *,
-    nova_poshta_account_repository: NovaPoshtaAccountRepository | None = None,
-    sync_before_show: bool = False,
-) -> None:
-    """Render active waybills with dynamic numbering and order details."""
-    if message.from_user is None:
-        return
-
-    if sync_before_show and nova_poshta_account_repository is not None:
-        try:
-            await _run_sync(
-                telegram_user_id=message.from_user.id,
-                nova_poshta_account_repository=nova_poshta_account_repository,
-                waybill_repository=waybill_repository,
-            )
-        except Exception as exc:
-            logger.exception(
-                "Automatic waybill sync failed for user {}: {}",
-                message.from_user.id,
-                exc,
-            )
-
-    waybills = await waybill_repository.get_active(message.from_user.id)
-    if not waybills:
-        await message.answer(
-            MSG_WAYBILLS_EMPTY,
-            reply_markup=build_waybills_footer_keyboard(),
-        )
-        return
-
-    await message.answer(MSG_WAYBILLS_LIST_HEADER)
-    items_by_order = await order_item_repository.get_by_order_ids(
-        [waybill.id for waybill in waybills],
-    )
-
-    for index, waybill in enumerate(waybills, start=1):
-        items = items_by_order.get(waybill.id, [])
-        await message.answer(
-            format_waybill_details(index, waybill, items),
-            reply_markup=build_waybill_actions_keyboard(waybill.id),
-        )
-
-    await message.answer(
-        MSG_WAYBILLS_FOOTER,
-        reply_markup=build_waybills_footer_keyboard(),
-    )
 
 
 @router.callback_query(F.data == CALLBACK_WAYBILL_SYNC)
@@ -156,7 +77,7 @@ async def handle_waybill_sync(
             deleted=result.deleted,
         ),
     )
-    await show_active_waybills(
+    await render_my_waybills(
         callback.message,
         waybill_repository,
         order_item_repository,
@@ -168,6 +89,7 @@ async def handle_waybill_edit_products_start(
     callback: CallbackQuery,
     state: FSMContext,
     waybill_repository: WaybillRepository,
+    order_item_repository: OrderItemRepository,
 ) -> None:
     if callback.data is None or callback.message is None or callback.from_user is None:
         return
@@ -180,9 +102,10 @@ async def handle_waybill_edit_products_start(
     waybill = await waybill_repository.get_by_id(waybill_id, callback.from_user.id)
     if waybill is None or not is_list_active_status(waybill.shipment_status_code):
         await callback.answer()
-        await callback.message.answer(
-            MSG_WAYBILLS_EMPTY,
-            reply_markup=build_main_menu_keyboard(),
+        await render_my_waybills(
+            callback.message,
+            waybill_repository,
+            order_item_repository,
         )
         return
 
@@ -213,21 +136,28 @@ async def handle_waybill_edit_products_save(
     waybill_id = data.get("waybill_id")
     if waybill_id is None:
         await state.clear()
-        await message.answer(MSG_WAYBILLS_EMPTY, reply_markup=build_main_menu_keyboard())
+        await render_my_waybills(
+            message,
+            waybill_repository,
+            order_item_repository,
+        )
         return
 
     waybill = await waybill_repository.get_by_id(int(waybill_id), message.from_user.id)
     if waybill is None or not is_list_active_status(waybill.shipment_status_code):
         await state.clear()
-        await message.answer(MSG_WAYBILLS_EMPTY, reply_markup=build_main_menu_keyboard())
+        await render_my_waybills(
+            message,
+            waybill_repository,
+            order_item_repository,
+        )
         return
 
     await order_item_repository.replace_items(int(waybill_id), product_names)
     await state.clear()
     await message.answer(MSG_ORDER_ITEMS_UPDATED)
-    await show_active_waybills(
+    await render_my_waybills(
         message,
         waybill_repository,
         order_item_repository,
-        nova_poshta_account_repository=nova_poshta_account_repository,
     )
