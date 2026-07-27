@@ -1,22 +1,26 @@
-"""Two-way synchronization between local waybills and Nova Poshta."""
+"""Synchronize local shipment statuses with Nova Poshta tracking API."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
-from typing import Any
+from datetime import UTC, datetime
 
 from loguru import logger
 
-from app.constants import TTN_DEFAULT_CARGO_DESCRIPTION, TTN_DEFAULT_DECLARED_COST, TTN_DEFAULT_WEIGHT
 from app.models.nova_poshta_account import NovaPoshtaAccount
 from app.models.waybill import Waybill
 from app.nova_poshta import NovaPoshtaClient
-from app.nova_poshta.constants import DOCUMENT_LIST_PAGE_SIZE, DOCUMENT_LIST_SYNC_DAYS
 from app.nova_poshta.exceptions import NovaPoshtaError
 from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRepository
 from app.repositories.waybill_repository import WaybillRepository
-from app.utils.waybill_status import format_status_label, normalize_status_code
+from app.utils.waybill_status import (
+    filter_list_active_waybills,
+    format_status_label,
+    is_deleted_status,
+    parse_status_documents,
+)
+
+TRACKING_BATCH_SIZE = 100
 
 
 @dataclass(slots=True)
@@ -35,300 +39,125 @@ class SyncResult:
         self.failed_accounts.extend(other.failed_accounts)
 
 
-def _format_np_date(value: datetime) -> str:
-    return value.strftime("%d.%m.%Y")
+def _chunk_waybills(waybills: list[Waybill], size: int) -> list[list[Waybill]]:
+    return [waybills[index : index + size] for index in range(0, len(waybills), size)]
 
 
-def _first_value(document: dict[str, Any], *keys: str) -> str:
-    for key in keys:
-        raw = document.get(key)
-        if raw is None:
-            continue
-        text = str(raw).strip()
-        if text:
-            return text
-    return ""
-
-
-def _extract_cod_amount(document: dict[str, Any]) -> str:
-    for key in (
-        "AfterpaymentOnGoodsCost",
-        "RedeliverySum",
-        "RedeliveryPayment",
-        "BackwardDeliveryMoney",
-    ):
-        value = _first_value(document, key)
-        if value and value not in {"0", "0.0", "0,0"}:
-            return value.replace(",", ".")
-
-    backward = document.get("BackwardDeliveryData")
-    if isinstance(backward, list):
-        for item in backward:
-            if not isinstance(item, dict):
-                continue
-            if str(item.get("CargoType") or "").casefold() == "money":
-                amount = _first_value(item, "RedeliveryString", "Amount")
-                if amount:
-                    return amount.replace(",", ".")
-    return "0"
-
-
-def _extract_warehouse_number(document: dict[str, Any]) -> str:
-    number = _first_value(document, "WarehouseRecipientNumber")
-    if number:
-        return number.lstrip("№")
-    description = _first_value(document, "WarehouseRecipientDescription", "RecipientAddressDescription")
-    for token in description.replace("№", " ").split():
-        if token.isdigit():
-            return token
-    return ""
-
-
-def _map_remote_document(document: dict[str, Any]) -> dict[str, str]:
-    if _first_value(document, "DeletionMark") in {"1", "true", "True"}:
-        status_code = "2"
-    else:
-        status_code = normalize_status_code(document.get("StateId") or document.get("StatusCode"))
-    delivery_cost = _first_value(document, "CostOnSite", "DocumentCost") or None
-    return {
-        "ttn_number": _first_value(document, "IntDocNumber", "Number"),
-        "document_ref": _first_value(document, "Ref"),
-        "recipient_name": _first_value(
-            document,
-            "RecipientContactPerson",
-            "RecipientDescription",
-            "ContactRecipientDescription",
-        ),
-        "recipient_phone": _first_value(document, "RecipientsPhone", "RecipientPhone", "Phone"),
-        "city_name": _first_value(document, "CityRecipientDescription", "RecipientCityName"),
-        "city_ref": _first_value(document, "CityRecipient", "RecipientCityRef"),
-        "warehouse_number": _extract_warehouse_number(document),
-        "warehouse_ref": _first_value(document, "WarehouseRecipient", "WarehouseRecipientRef"),
-        "cod_amount": _extract_cod_amount(document),
-        "delivery_cost": delivery_cost,
-        "cargo_description": _first_value(document, "Description") or TTN_DEFAULT_CARGO_DESCRIPTION,
-        "weight": _first_value(document, "Weight") or TTN_DEFAULT_WEIGHT,
-        "declared_cost": _first_value(document, "Cost") or TTN_DEFAULT_DECLARED_COST,
-        "shipment_status_code": status_code,
-        "shipment_status": format_status_label(status_code, document.get("Status")),
-    }
-
-
-def _documents_equal(local: Waybill, remote_fields: dict[str, str]) -> bool:
-    comparable = (
-        "ttn_number",
-        "document_ref",
-        "recipient_name",
-        "recipient_phone",
-        "city_name",
-        "city_ref",
-        "warehouse_number",
-        "warehouse_ref",
-        "cod_amount",
-        "delivery_cost",
-        "cargo_description",
-        "weight",
-        "declared_cost",
-        "shipment_status",
-        "shipment_status_code",
+def _is_not_found_error(response: dict[str, object], ttn_number: str) -> bool:
+    """Return True when Nova Poshta explicitly reports a missing document."""
+    markers = (
+        "not found",
+        "не знайден",
+        "does not exist",
+        "document number is incorrect",
+        "номер документу",
     )
-    for key in comparable:
-        local_value = getattr(local, key)
-        remote_value = remote_fields.get(key)
-        if key == "delivery_cost":
-            local_text = str(local_value or "").strip()
-            remote_text = str(remote_value or "").strip()
-            if local_text != remote_text:
-                return False
-            continue
-        if str(local_value or "").strip() != str(remote_value or "").strip():
-            return False
-    return True
+    for error in response.get("errors") or []:
+        text = str(error).casefold()
+        if ttn_number in str(error) and any(marker in text for marker in markers):
+            return True
+    return False
 
 
-async def _fetch_remote_documents(client: NovaPoshtaClient) -> list[dict[str, Any]]:
-    now = datetime.now().astimezone()
-    date_from = now - timedelta(days=DOCUMENT_LIST_SYNC_DAYS)
-    documents: list[dict[str, Any]] = []
-    page = 1
-
-    while True:
-        response = await client.get_document_list(
-            date_time_from=_format_np_date(date_from),
-            date_time_to=_format_np_date(now),
-            page=str(page),
-            limit=DOCUMENT_LIST_PAGE_SIZE,
-        )
-        if response.get("success") is not True:
-            errors = [str(error) for error in response.get("errors") or []]
-            msg = "; ".join(errors) or "Nova Poshta failed to return document list"
-            logger.error(
-                "Nova Poshta getDocumentList failed: DateTimeFrom={} DateTimeTo={} Page={} errors={} response={}",
-                _format_np_date(date_from),
-                _format_np_date(now),
-                page,
-                errors,
-                response,
-            )
-            raise NovaPoshtaError(msg)
-
-        batch = [item for item in response.get("data") or [] if isinstance(item, dict)]
-        if not batch:
-            break
-
-        documents.extend(batch)
-        if len(batch) < int(DOCUMENT_LIST_PAGE_SIZE):
-            break
-        page += 1
-
-    return documents
+def _deleted_status_fields() -> tuple[str, str]:
+    return "2", format_status_label("2")
 
 
-async def _fetch_missing_documents(
-    client: NovaPoshtaClient,
-    waybills: list[Waybill],
-    remote_by_ref: dict[str, dict[str, Any]],
-    remote_by_ttn: dict[str, dict[str, Any]],
-) -> dict[str, dict[str, Any]]:
-    merged = dict(remote_by_ref)
-    for waybill in waybills:
-        if waybill.document_ref and waybill.document_ref in merged:
-            continue
-        if waybill.ttn_number in remote_by_ttn:
-            continue
-
-        lookup_ref = waybill.document_ref
-        if not lookup_ref:
-            continue
-
-        response = await client.get_document(lookup_ref)
-        if response.get("success") is not True:
-            continue
-        data = response.get("data")
-        if isinstance(data, list) and data and isinstance(data[0], dict):
-            document = data[0]
-        elif isinstance(data, dict):
-            document = data
-        else:
-            continue
-
-        ref = _first_value(document, "Ref")
-        ttn = _first_value(document, "IntDocNumber", "Number")
-        if ref:
-            merged[ref] = document
-        if ttn:
-            remote_by_ttn[ttn] = document
-    return merged
-
-
-async def sync_account_waybills(
+async def _sync_active_shipments(
     *,
     account: NovaPoshtaAccount,
     telegram_user_id: int,
+    active_shipments: list[Waybill],
     waybill_repository: WaybillRepository,
 ) -> SyncResult:
-    """Synchronize one Nova Poshta account with the local database."""
+    """Update statuses for locally active shipments via TrackingDocument.getStatusDocuments."""
     result = SyncResult()
+    if not active_shipments:
+        return result
+
     synced_at = datetime.now(UTC)
     logger.info(
-        "Starting Nova Poshta sync for user {} account {} (id={}, active={})",
+        "Starting tracking sync for user {} account {} (id={}, shipments={})",
         telegram_user_id,
         account.account_name,
         account.id,
-        account.is_active,
+        len(active_shipments),
     )
-    local_waybills = await waybill_repository.get_by_account_id(telegram_user_id, account.id)
-    unassigned_waybills = await waybill_repository.get_unassigned(telegram_user_id)
-    local_by_ref = {
-        waybill.document_ref: waybill
-        for waybill in (*local_waybills, *unassigned_waybills)
-        if waybill.document_ref
-    }
-    local_by_ttn = {
-        waybill.ttn_number: waybill for waybill in (*local_waybills, *unassigned_waybills)
-    }
 
     async with NovaPoshtaClient(account.api_key) as client:
-        remote_documents = await _fetch_remote_documents(client)
-        remote_by_ref: dict[str, dict[str, Any]] = {}
-        remote_by_ttn: dict[str, dict[str, Any]] = {}
-        for document in remote_documents:
-            ref = _first_value(document, "Ref")
-            ttn = _first_value(document, "IntDocNumber", "Number")
-            if ref:
-                remote_by_ref[ref] = document
-            if ttn:
-                remote_by_ttn[ttn] = document
+        for batch in _chunk_waybills(active_shipments, TRACKING_BATCH_SIZE):
+            documents = [
+                {
+                    "DocumentNumber": waybill.ttn_number,
+                    "Phone": waybill.recipient_phone,
+                }
+                for waybill in batch
+            ]
+            response = await client.get_status_documents(documents)
+            if response.get("success") is not True:
+                errors = [str(error) for error in response.get("errors") or []]
+                msg = "; ".join(errors) or "Nova Poshta failed to return tracking statuses"
+                logger.error(
+                    "Nova Poshta getStatusDocuments failed for user {} account {}: {}",
+                    telegram_user_id,
+                    account.account_name,
+                    response,
+                )
+                raise NovaPoshtaError(msg)
 
-        remote_by_ref = await _fetch_missing_documents(
-            client,
-            local_waybills,
-            remote_by_ref,
-            remote_by_ttn,
-        )
+            statuses = parse_status_documents(response)
+            status_by_number = {status["number"]: status for status in statuses}
 
-    seen_local_ids: set[int] = set()
+            for waybill in batch:
+                old_status = waybill.shipment_status
+                old_status_code = waybill.shipment_status_code
+                tracking = status_by_number.get(waybill.ttn_number)
 
-    for document in remote_by_ref.values():
-        fields = _map_remote_document(document)
-        if not fields["ttn_number"]:
-            continue
+                if tracking is not None:
+                    api_status = tracking["status"]
+                    new_status_code = tracking["status_code"]
+                    new_status = format_status_label(new_status_code, api_status)
+                elif _is_not_found_error(response, waybill.ttn_number):
+                    new_status_code, new_status = _deleted_status_fields()
+                    api_status = "NOT_FOUND"
+                else:
+                    api_status = "NOT_RETURNED"
+                    logger.info(
+                        "Sync status skipped: TTN={} -> API status={} -> Old status={} -> New status={}",
+                        waybill.ttn_number,
+                        api_status,
+                        old_status,
+                        old_status,
+                    )
+                    waybill.last_checked_at = synced_at
+                    continue
 
-        waybill = None
-        if fields["document_ref"]:
-            waybill = local_by_ref.get(fields["document_ref"])
-        if waybill is None:
-            waybill = local_by_ttn.get(fields["ttn_number"])
+                logger.info(
+                    "Sync status update: TTN={} -> API status={} -> Old status={} -> New status={}",
+                    waybill.ttn_number,
+                    api_status,
+                    old_status,
+                    new_status,
+                )
 
-        if waybill is None:
-            await waybill_repository.create_waybill(
-                telegram_user_id=telegram_user_id,
-                nova_poshta_account_id=account.id,
-                **fields,
-            )
-            result.added += 1
-            logger.info(
-                "Imported TTN {} for user {} account {}",
-                fields["ttn_number"],
-                telegram_user_id,
-                account.account_name,
-            )
-            continue
+                if (
+                    new_status_code == old_status_code
+                    and new_status == old_status
+                ):
+                    waybill.last_checked_at = synced_at
+                    continue
 
-        seen_local_ids.add(waybill.id)
-        if _documents_equal(waybill, fields):
-            continue
+                await waybill_repository.update_tracking_status(
+                    waybill,
+                    shipment_status=new_status,
+                    shipment_status_code=new_status_code,
+                    last_checked_at=synced_at,
+                )
 
-        await waybill_repository.update_from_sync(
-            waybill,
-            nova_poshta_account_id=account.id,
-            synced_at=synced_at,
-            **fields,
-        )
-        result.updated += 1
-        logger.info(
-            "Updated TTN {} for user {} account {}",
-            fields["ttn_number"],
-            telegram_user_id,
-            account.account_name,
-        )
-
-    for waybill in local_waybills:
-        if waybill.id in seen_local_ids:
-            continue
-        if waybill.document_ref and waybill.document_ref in remote_by_ref:
-            continue
-        if waybill.ttn_number in remote_by_ttn:
-            continue
-
-        await waybill_repository.delete_waybill(waybill)
-        result.deleted += 1
-        logger.info(
-            "Deleted TTN {} for user {} account {} because it is missing in Nova Poshta",
-            waybill.ttn_number,
-            telegram_user_id,
-            account.account_name,
-        )
+                if is_deleted_status(new_status_code) and not is_deleted_status(old_status_code):
+                    result.deleted += 1
+                else:
+                    result.updated += 1
 
     return result
 
@@ -339,24 +168,32 @@ async def sync_user_waybills(
     account_repository: NovaPoshtaAccountRepository,
     waybill_repository: WaybillRepository,
 ) -> SyncResult:
-    """Synchronize the active Nova Poshta account for a Telegram user."""
+    """Synchronize locally active shipments using Nova Poshta tracking API."""
     total = SyncResult()
     active_account = await account_repository.get_active_account(telegram_user_id)
     if active_account is None:
         logger.warning("Nova Poshta sync skipped for user {}: no active account", telegram_user_id)
         return total
 
+    all_waybills = await waybill_repository.get_all_for_user(telegram_user_id)
+    active_shipments = filter_list_active_waybills(all_waybills)
+    if not active_shipments:
+        logger.info("Nova Poshta sync skipped for user {}: no locally active shipments", telegram_user_id)
+        return total
+
     logger.info(
-        "Nova Poshta sync using active account {} (id={}) for user {}",
+        "Nova Poshta sync using active account {} (id={}) for user {} with {} active shipment(s)",
         active_account.account_name,
         active_account.id,
         telegram_user_id,
+        len(active_shipments),
     )
 
     try:
-        account_result = await sync_account_waybills(
+        account_result = await _sync_active_shipments(
             account=active_account,
             telegram_user_id=telegram_user_id,
+            active_shipments=active_shipments,
             waybill_repository=waybill_repository,
         )
         total.merge(account_result)
