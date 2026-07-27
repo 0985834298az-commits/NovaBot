@@ -1,10 +1,10 @@
 """Telegram keyboards."""
 
-from app.keyboards.api_key import build_replace_api_key_keyboard
 from app.keyboards.main_menu import build_main_menu_keyboard
 from app.keyboards.nova_poshta_accounts import (
-    build_nova_poshta_account_actions_keyboard,
     build_nova_poshta_account_delete_keyboard,
+    build_nova_poshta_account_detail_keyboard,
+    build_nova_poshta_account_list_item_keyboard,
     build_nova_poshta_accounts_footer_keyboard,
 )
 from app.keyboards.payment_cards import (
@@ -21,8 +21,9 @@ from app.keyboards.waybills import build_waybill_actions_keyboard
 
 __all__ = (
     "build_main_menu_keyboard",
-    "build_nova_poshta_account_actions_keyboard",
     "build_nova_poshta_account_delete_keyboard",
+    "build_nova_poshta_account_detail_keyboard",
+    "build_nova_poshta_account_list_item_keyboard",
     "build_nova_poshta_accounts_footer_keyboard",
     "build_payment_card_actions_keyboard",
     "build_payment_card_delete_keyboard",
@@ -30,6 +31,5 @@ __all__ = (
     "build_recipient_actions_keyboard",
     "build_recipient_delete_keyboard",
     "build_recipient_search_keyboard",
-    "build_replace_api_key_keyboard",
     "build_waybill_actions_keyboard",
 )

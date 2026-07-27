@@ -1,4 +1,3 @@
-from app.handlers.api_key import router as api_key_router
 from app.handlers.menu import router as menu_router
 from app.handlers.nova_poshta_accounts import router as nova_poshta_accounts_router
 from app.handlers.payment_cards import router as payment_cards_router
@@ -8,7 +7,6 @@ from app.handlers.ttn import router as ttn_router
 from app.handlers.waybills import router as waybills_router
 
 __all__ = (
-    "api_key_router",
     "menu_router",
     "nova_poshta_accounts_router",
     "payment_cards_router",

@@ -6,31 +6,35 @@ from aiogram.types import CallbackQuery, Message
 from loguru import logger
 
 from app.constants import (
-    API_KEY_INVALID_MESSAGE,
+    CALLBACK_NP_ACCOUNT_ACTIVATE,
     CALLBACK_NP_ACCOUNT_ADD,
     CALLBACK_NP_ACCOUNT_BACK,
     CALLBACK_NP_ACCOUNT_CHANGE_API,
     CALLBACK_NP_ACCOUNT_DELETE,
     CALLBACK_NP_ACCOUNT_DELETE_NO,
     CALLBACK_NP_ACCOUNT_DELETE_YES,
+    CALLBACK_NP_ACCOUNT_DETAIL_BACK,
+    CALLBACK_NP_ACCOUNT_OPEN,
     CALLBACK_NP_ACCOUNT_RENAME,
-    CALLBACK_NP_ACCOUNT_SELECT,
     MSG_NP_ACCOUNT_ACTIVE_CHANGED,
     MSG_NP_ACCOUNT_API_UPDATED,
     MSG_NP_ACCOUNT_DELETE_CONFIRM,
     MSG_NP_ACCOUNT_DELETED,
+    MSG_NP_ACCOUNT_DETAIL_HEADER,
     MSG_NP_ACCOUNT_RENAMED,
     MSG_NP_ACCOUNT_SAVED,
     MSG_NP_ACCOUNTS_EMPTY,
     MSG_NP_ACCOUNTS_LIST_HEADER,
     MSG_NP_ASK_ACCOUNT_NAME,
     MSG_NP_ASK_API_KEY,
+    MSG_NP_INVALID_API_KEY,
 )
 from app.handlers.states import NovaPoshtaAccountWizard
 from app.keyboards import (
     build_main_menu_keyboard,
-    build_nova_poshta_account_actions_keyboard,
     build_nova_poshta_account_delete_keyboard,
+    build_nova_poshta_account_detail_keyboard,
+    build_nova_poshta_account_list_item_keyboard,
     build_nova_poshta_accounts_footer_keyboard,
 )
 from app.models.nova_poshta_account import NovaPoshtaAccount
@@ -38,7 +42,7 @@ from app.nova_poshta import NovaPoshtaClient
 from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRepository
 from app.services.nova_poshta_account_service import format_nova_poshta_account
 
-router = Router(name="nova_poshta_accounts")
+router = Router(name="np_accounts")
 
 
 def _parse_account_id(callback_data: str, prefix: str) -> int | None:
@@ -80,12 +84,31 @@ async def show_nova_poshta_accounts_list(
     for account in accounts:
         await message.answer(
             format_nova_poshta_account(account),
-            reply_markup=build_nova_poshta_account_actions_keyboard(account.id),
+            reply_markup=build_nova_poshta_account_list_item_keyboard(account.id),
         )
 
     await message.answer(
-        "Керування акаунтами:",
+        "Керування акаунтами НП:",
         reply_markup=build_nova_poshta_accounts_footer_keyboard(),
+    )
+
+
+async def show_nova_poshta_account_detail(
+    message: Message,
+    account_repository: NovaPoshtaAccountRepository,
+    account_id: int,
+    telegram_user_id: int,
+) -> None:
+    """Render a single Nova Poshta account with management actions."""
+    account = await account_repository.get_by_id(account_id, telegram_user_id)
+    if account is None:
+        await message.answer(MSG_NP_ACCOUNTS_EMPTY)
+        await show_nova_poshta_accounts_list(message, account_repository)
+        return
+
+    await message.answer(
+        f"{MSG_NP_ACCOUNT_DETAIL_HEADER}\n\n{format_nova_poshta_account(account)}",
+        reply_markup=build_nova_poshta_account_detail_keyboard(account.id),
     )
 
 
@@ -138,7 +161,7 @@ async def handle_nova_poshta_account_add_api_key(
 
     api_key = message.text.strip()
     if not api_key:
-        await message.answer(API_KEY_INVALID_MESSAGE)
+        await message.answer(MSG_NP_INVALID_API_KEY)
         return
 
     account_name = str((await state.get_data()).get("account_name") or "").strip()
@@ -149,7 +172,7 @@ async def handle_nova_poshta_account_add_api_key(
 
     logger.info("Validating Nova Poshta API key for user {}", message.from_user.id)
     if not await _validate_api_key(api_key):
-        await message.answer(API_KEY_INVALID_MESSAGE)
+        await message.answer(MSG_NP_INVALID_API_KEY)
         return
 
     await account_repository.create_account(
@@ -163,15 +186,37 @@ async def handle_nova_poshta_account_add_api_key(
     await show_nova_poshta_accounts_list(message, account_repository)
 
 
-@router.callback_query(F.data.startswith(f"{CALLBACK_NP_ACCOUNT_SELECT}:"))
-async def handle_nova_poshta_account_select(
+@router.callback_query(F.data.startswith(f"{CALLBACK_NP_ACCOUNT_OPEN}:"))
+async def handle_nova_poshta_account_open(
     callback: CallbackQuery,
     account_repository: NovaPoshtaAccountRepository,
 ) -> None:
     if callback.data is None or callback.message is None or callback.from_user is None:
         return
 
-    account_id = _parse_account_id(callback.data, CALLBACK_NP_ACCOUNT_SELECT)
+    account_id = _parse_account_id(callback.data, CALLBACK_NP_ACCOUNT_OPEN)
+    if account_id is None:
+        await callback.answer("Некоректний акаунт", show_alert=True)
+        return
+
+    await callback.answer()
+    await show_nova_poshta_account_detail(
+        callback.message,
+        account_repository,
+        account_id,
+        callback.from_user.id,
+    )
+
+
+@router.callback_query(F.data.startswith(f"{CALLBACK_NP_ACCOUNT_ACTIVATE}:"))
+async def handle_nova_poshta_account_activate(
+    callback: CallbackQuery,
+    account_repository: NovaPoshtaAccountRepository,
+) -> None:
+    if callback.data is None or callback.message is None or callback.from_user is None:
+        return
+
+    account_id = _parse_account_id(callback.data, CALLBACK_NP_ACCOUNT_ACTIVATE)
     if account_id is None:
         await callback.answer("Некоректний акаунт", show_alert=True)
         return
@@ -186,6 +231,23 @@ async def handle_nova_poshta_account_select(
         return
 
     await callback.message.answer(MSG_NP_ACCOUNT_ACTIVE_CHANGED)
+    await show_nova_poshta_account_detail(
+        callback.message,
+        account_repository,
+        account_id,
+        callback.from_user.id,
+    )
+
+
+@router.callback_query(F.data == CALLBACK_NP_ACCOUNT_DETAIL_BACK)
+async def handle_nova_poshta_account_detail_back(
+    callback: CallbackQuery,
+    account_repository: NovaPoshtaAccountRepository,
+) -> None:
+    if callback.message is None or callback.from_user is None:
+        return
+
+    await callback.answer()
     await show_nova_poshta_accounts_list(callback.message, account_repository)
 
 
@@ -234,14 +296,24 @@ async def handle_nova_poshta_account_delete_confirm(
 
 
 @router.callback_query(F.data.startswith(f"{CALLBACK_NP_ACCOUNT_DELETE_NO}:"))
-async def handle_nova_poshta_account_delete_cancel(callback: CallbackQuery) -> None:
-    if callback.message is None:
+async def handle_nova_poshta_account_delete_cancel(
+    callback: CallbackQuery,
+    account_repository: NovaPoshtaAccountRepository,
+) -> None:
+    if callback.data is None or callback.message is None or callback.from_user is None:
         return
 
+    account_id = _parse_account_id(callback.data, CALLBACK_NP_ACCOUNT_DELETE_NO)
     await callback.answer()
-    await callback.message.answer(
-        "Скасовано.",
-        reply_markup=build_main_menu_keyboard(),
+    if account_id is None:
+        await show_nova_poshta_accounts_list(callback.message, account_repository)
+        return
+
+    await show_nova_poshta_account_detail(
+        callback.message,
+        account_repository,
+        account_id,
+        callback.from_user.id,
     )
 
 
@@ -294,7 +366,12 @@ async def handle_nova_poshta_account_rename_save(
         return
 
     await message.answer(MSG_NP_ACCOUNT_RENAMED)
-    await show_nova_poshta_accounts_list(message, account_repository)
+    await show_nova_poshta_account_detail(
+        message,
+        account_repository,
+        int(account_id),
+        message.from_user.id,
+    )
 
 
 @router.callback_query(F.data.startswith(f"{CALLBACK_NP_ACCOUNT_CHANGE_API}:"))
@@ -328,7 +405,7 @@ async def handle_nova_poshta_account_change_api_save(
 
     api_key = message.text.strip()
     if not api_key:
-        await message.answer(API_KEY_INVALID_MESSAGE)
+        await message.answer(MSG_NP_INVALID_API_KEY)
         return
 
     data = await state.get_data()
@@ -340,7 +417,7 @@ async def handle_nova_poshta_account_change_api_save(
 
     logger.info("Validating Nova Poshta API key for user {}", message.from_user.id)
     if not await _validate_api_key(api_key):
-        await message.answer(API_KEY_INVALID_MESSAGE)
+        await message.answer(MSG_NP_INVALID_API_KEY)
         return
 
     updated = await account_repository.update_account(
@@ -355,7 +432,12 @@ async def handle_nova_poshta_account_change_api_save(
         return
 
     await message.answer(MSG_NP_ACCOUNT_API_UPDATED)
-    await show_nova_poshta_accounts_list(message, account_repository)
+    await show_nova_poshta_account_detail(
+        message,
+        account_repository,
+        int(account_id),
+        message.from_user.id,
+    )
 
 
 @router.callback_query(F.data == CALLBACK_NP_ACCOUNT_BACK)

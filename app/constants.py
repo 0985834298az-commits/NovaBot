@@ -10,18 +10,14 @@ START_MESSAGE = (
     "Bot is ready."
 )
 
-ASK_API_KEY_MESSAGE = "Введіть API ключ Нової Пошти"
-API_KEY_SAVED_MESSAGE = "✅ API ключ успішно збережено."
-API_KEY_INVALID_MESSAGE = "❌ API ключ неправильний.\n\nСпробуйте ще раз."
+MSG_NP_INVALID_API_KEY = "❌ API ключ неправильний.\n\nСпробуйте ще раз."
 
 BTN_CREATE_TTN = "📦 Створити ТТН"
 BTN_MY_WAYBILLS = "📋 Мої накладні"
 BTN_RECIPIENTS = "👥 Одержувачі"
 BTN_CARDS = "💳 Картки"
 BTN_NP_ACCOUNTS = "🏢 Акаунти НП"
-BTN_API_KEY = "🔑 API ключ"
 BTN_SETTINGS = "⚙️ Налаштування"
-BTN_REPLACE_API_KEY = "Замінити API ключ"
 
 MAIN_MENU_BUTTONS = frozenset(
     {
@@ -30,12 +26,9 @@ MAIN_MENU_BUTTONS = frozenset(
         BTN_RECIPIENTS,
         BTN_CARDS,
         BTN_NP_ACCOUNTS,
-        BTN_API_KEY,
         BTN_SETTINGS,
     }
 )
-
-CALLBACK_REPLACE_API_KEY = "replace_api_key"
 
 MSG_CREATE_TTN_SOON = "Створення ТТН скоро буде доступне."
 MSG_WAYBILLS_EMPTY = "Історія накладних порожня."
@@ -108,15 +101,17 @@ MSG_CARD_EDIT_NUMBER = "Введіть номер картки:"
 MSG_CARD_UPDATED = "Дані картки оновлено."
 MSG_NO_ACTIVE_PAYMENT_CARD = "Спочатку додайте картку у розділі 💳 Картки."
 
-BTN_NP_ACCOUNT_SELECT = "✅ Обрати"
+BTN_NP_ACCOUNT_ACTIVATE = "✅ Зробити активним"
 BTN_NP_ACCOUNT_RENAME = "✏️ Перейменувати"
 BTN_NP_ACCOUNT_CHANGE_API = "🔑 Змінити API"
 BTN_NP_ACCOUNT_DELETE = "🗑 Видалити"
+BTN_NP_ACCOUNT_OPEN = "▶️ Відкрити"
 BTN_NP_ACCOUNT_ADD = "➕ Додати акаунт"
 BTN_NP_ACCOUNT_DELETE_YES = "✅ Так"
 BTN_NP_ACCOUNT_DELETE_NO = "❌ Ні"
 
-CALLBACK_NP_ACCOUNT_SELECT = "np_account:select"
+CALLBACK_NP_ACCOUNT_OPEN = "np_account:open"
+CALLBACK_NP_ACCOUNT_ACTIVATE = "np_account:activate"
 CALLBACK_NP_ACCOUNT_RENAME = "np_account:rename"
 CALLBACK_NP_ACCOUNT_CHANGE_API = "np_account:change_api"
 CALLBACK_NP_ACCOUNT_DELETE = "np_account:delete"
@@ -124,17 +119,19 @@ CALLBACK_NP_ACCOUNT_DELETE_YES = "np_account:delete:yes"
 CALLBACK_NP_ACCOUNT_DELETE_NO = "np_account:delete:no"
 CALLBACK_NP_ACCOUNT_ADD = "np_account:add"
 CALLBACK_NP_ACCOUNT_BACK = "np_account:back"
+CALLBACK_NP_ACCOUNT_DETAIL_BACK = "np_account:detail_back"
 
-MSG_NP_ACCOUNTS_EMPTY = "Список акаунтів порожній."
-MSG_NP_ACCOUNTS_LIST_HEADER = "Акаунти Нової Пошти:"
+MSG_NP_ACCOUNTS_EMPTY = "Список акаунтів НП порожній."
+MSG_NP_ACCOUNTS_LIST_HEADER = "Акаунти НП:"
+MSG_NP_ACCOUNT_DETAIL_HEADER = "Акаунт НП:"
 MSG_NP_ASK_ACCOUNT_NAME = "Назва акаунта"
-MSG_NP_ASK_API_KEY = "API Key"
-MSG_NP_ACCOUNT_SAVED = "✅ Акаунт збережено."
+MSG_NP_ASK_API_KEY = "Введіть API ключ"
+MSG_NP_ACCOUNT_SAVED = "✅ Акаунт НП збережено."
 MSG_NP_ACCOUNT_ACTIVE_CHANGED = "✅ Активний акаунт Нової Пошти змінено."
-MSG_NP_ACCOUNT_DELETE_CONFIRM = "Видалити акаунт?"
-MSG_NP_ACCOUNT_DELETED = "Акаунт видалено."
-MSG_NP_ACCOUNT_RENAMED = "Назву акаунта оновлено."
-MSG_NP_ACCOUNT_API_UPDATED = "API ключ акаунта оновлено."
+MSG_NP_ACCOUNT_DELETE_CONFIRM = "Видалити акаунт НП?"
+MSG_NP_ACCOUNT_DELETED = "Акаунт НП видалено."
+MSG_NP_ACCOUNT_RENAMED = "Назву акаунта НП оновлено."
+MSG_NP_ACCOUNT_API_UPDATED = "API ключ акаунта НП оновлено."
 MSG_NO_ACTIVE_NP_ACCOUNT = "Спочатку додайте акаунт у розділі 🏢 Акаунти НП."
 
 API_KEY_MASK_SUFFIX = "****"

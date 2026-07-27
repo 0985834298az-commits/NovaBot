@@ -17,7 +17,6 @@ from app.database.session import (
     init_db,
 )
 from app.handlers import (
-    api_key_router,
     menu_router,
     nova_poshta_accounts_router,
     payment_cards_router,
@@ -55,7 +54,6 @@ def create_dispatcher(
     dispatcher.include_router(payment_cards_router)
     dispatcher.include_router(waybills_router)
     dispatcher.include_router(recipients_router)
-    dispatcher.include_router(api_key_router)
     dispatcher.include_router(ttn_router)
     return dispatcher
 

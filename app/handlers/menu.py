@@ -3,7 +3,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from app.constants import (
-    BTN_API_KEY,
     BTN_CARDS,
     BTN_CREATE_TTN,
     BTN_MY_WAYBILLS,
@@ -76,7 +75,7 @@ async def handle_payment_cards(
     await begin_payment_cards_list(message, state, payment_card_repository)
 
 
-@router.message(F.text.in_({BTN_NP_ACCOUNTS, BTN_API_KEY}))
+@router.message(F.text == BTN_NP_ACCOUNTS)
 async def handle_nova_poshta_accounts(
     message: Message,
     state: FSMContext,

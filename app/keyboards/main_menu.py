@@ -2,7 +2,6 @@ from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from app.constants import (
-    BTN_API_KEY,
     BTN_CARDS,
     BTN_CREATE_TTN,
     BTN_MY_WAYBILLS,
