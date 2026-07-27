@@ -15,6 +15,9 @@ from app.nova_poshta.constants import (
     METHOD_GET_COUNTERPARTIES,
     METHOD_GET_COUNTERPARTY_ADDRESSES,
     METHOD_GET_COUNTERPARTY_CONTACT_PERSONS,
+    DOCUMENT_LIST_PAGE_SIZE,
+    METHOD_GET_DOCUMENT,
+    METHOD_GET_DOCUMENT_LIST,
     METHOD_GET_STATUS,
     METHOD_GET_STATUS_DOCUMENTS,
     METHOD_GET_WAREHOUSES,
@@ -404,6 +407,34 @@ class NovaPoshtaClient:
             properties["MiddleName"] = middle_name
 
         return await self._call(MODEL_CONTACT_PERSON, METHOD_UPDATE, properties)
+
+    async def get_document_list(
+        self,
+        *,
+        date_time_from: str,
+        date_time_to: str,
+        page: str = "1",
+        limit: str = DOCUMENT_LIST_PAGE_SIZE,
+    ) -> dict[str, Any]:
+        """Fetch a page of InternetDocuments for the configured API key."""
+        return await self._call(
+            MODEL_INTERNET_DOCUMENT,
+            METHOD_GET_DOCUMENT_LIST,
+            {
+                "DateTimeFrom": date_time_from,
+                "DateTimeTo": date_time_to,
+                "Page": page,
+                "Limit": limit,
+            },
+        )
+
+    async def get_document(self, document_ref: str) -> dict[str, Any]:
+        """Fetch a single InternetDocument by Ref."""
+        return await self._call(
+            MODEL_INTERNET_DOCUMENT,
+            METHOD_GET_DOCUMENT,
+            {"Ref": document_ref},
+        )
 
     async def save_internet_document(
         self,

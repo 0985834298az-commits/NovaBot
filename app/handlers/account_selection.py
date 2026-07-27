@@ -7,6 +7,7 @@ from app.constants import (
     CALLBACK_ACCOUNT_SEL_CREATE_ANYWAY,
     CALLBACK_ACCOUNT_SEL_PICK,
     CALLBACK_ACCOUNT_SEL_SELECT,
+    MSG_TTN_CANCELLED,
 )
 from app.keyboards import build_main_menu_keyboard
 from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRepository
@@ -125,6 +126,6 @@ async def handle_account_sel_cancel(
     await clear_pending_ttn(state)
     await state.clear()
     await callback.message.answer(
-        "Створення ТТН скасовано.",
+        MSG_TTN_CANCELLED,
         reply_markup=build_main_menu_keyboard(),
     )

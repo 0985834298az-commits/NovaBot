@@ -51,10 +51,17 @@ async def handle_my_waybills(
     state: FSMContext,
     waybill_repository: WaybillRepository,
     order_item_repository: OrderItemRepository,
+    nova_poshta_account_repository: NovaPoshtaAccountRepository,
 ) -> None:
     """Show active waybills."""
     await state.clear()
-    await show_active_waybills(message, waybill_repository, order_item_repository)
+    await show_active_waybills(
+        message,
+        waybill_repository,
+        order_item_repository,
+        nova_poshta_account_repository=nova_poshta_account_repository,
+        sync_before_show=True,
+    )
 
 
 @router.message(F.text == BTN_RECIPIENTS)
@@ -82,6 +89,7 @@ async def handle_nova_poshta_accounts(
     message: Message,
     state: FSMContext,
     nova_poshta_account_repository: NovaPoshtaAccountRepository,
+    waybill_repository: WaybillRepository,
 ) -> None:
     """Show saved Nova Poshta accounts."""
     await state.clear()
@@ -93,6 +101,8 @@ async def handle_nova_poshta_accounts(
         message,
         state,
         nova_poshta_account_repository,
+        waybill_repository,
+        sync_before_show=True,
     )
 
 

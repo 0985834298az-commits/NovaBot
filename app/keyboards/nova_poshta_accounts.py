@@ -11,6 +11,7 @@ from app.constants import (
     BTN_NP_ACCOUNT_DELETE_YES,
     BTN_NP_ACCOUNT_OPEN,
     BTN_NP_ACCOUNT_RENAME,
+    BTN_SYNC,
     CALLBACK_NP_ACCOUNT_ACTIVATE,
     CALLBACK_NP_ACCOUNT_ADD,
     CALLBACK_NP_ACCOUNT_BACK,
@@ -21,6 +22,7 @@ from app.constants import (
     CALLBACK_NP_ACCOUNT_DETAIL_BACK,
     CALLBACK_NP_ACCOUNT_OPEN,
     CALLBACK_NP_ACCOUNT_RENAME,
+    CALLBACK_NP_ACCOUNT_SYNC,
 )
 
 
@@ -65,8 +67,9 @@ def build_nova_poshta_accounts_footer_keyboard() -> InlineKeyboardMarkup:
     """Build footer actions for the accounts list."""
     builder = InlineKeyboardBuilder()
     builder.button(text=BTN_NP_ACCOUNT_ADD, callback_data=CALLBACK_NP_ACCOUNT_ADD)
+    builder.button(text=BTN_SYNC, callback_data=CALLBACK_NP_ACCOUNT_SYNC)
     builder.button(text=BTN_BACK, callback_data=CALLBACK_NP_ACCOUNT_BACK)
-    builder.adjust(2)
+    builder.adjust(1)
     return builder.as_markup()
 
 

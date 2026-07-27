@@ -12,7 +12,7 @@ from app.nova_poshta import NovaPoshtaClient
 from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRepository
 from app.repositories.waybill_repository import WaybillRepository
 from app.services.nova_poshta_account_service import get_active_api_key
-from app.utils.waybill_status import parse_status_documents, should_archive_status
+from app.utils.waybill_status import format_status_label, parse_status_documents
 
 TRACKING_BATCH_SIZE = 100
 
@@ -68,30 +68,23 @@ async def check_active_waybill_statuses(
                             waybill.last_checked_at = checked_at
                             continue
 
-                        shipment_status = tracking["status"]
                         shipment_status_code = tracking["status_code"]
-
-                        if should_archive_status(shipment_status_code):
-                            await waybill_repository.archive_waybill(
-                                waybill,
-                                shipment_status=shipment_status,
-                                shipment_status_code=shipment_status_code,
-                                archived_at=checked_at,
-                                last_checked_at=checked_at,
-                            )
-                            logger.info(
-                                "Archived waybill {} for user {} with status {}",
-                                waybill.ttn_number,
-                                telegram_user_id,
-                                shipment_status,
-                            )
-                            continue
+                        shipment_status = format_status_label(
+                            shipment_status_code,
+                            tracking["status"],
+                        )
 
                         await waybill_repository.update_tracking_status(
                             waybill,
                             shipment_status=shipment_status,
                             shipment_status_code=shipment_status_code,
                             last_checked_at=checked_at,
+                        )
+                        logger.info(
+                            "Updated waybill {} for user {} with status {}",
+                            waybill.ttn_number,
+                            telegram_user_id,
+                            shipment_status,
                         )
 
         await session.commit()

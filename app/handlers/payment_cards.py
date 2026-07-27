@@ -6,6 +6,7 @@ from aiogram.types import CallbackQuery, Message
 
 from app.constants import (
     MSG_CARD_ACTIVE_CHANGED,
+    MSG_CARDS_FOOTER,
     MSG_CARD_ASK_NAME,
     MSG_CARD_ASK_NUMBER,
     MSG_CARD_ASK_OWNER,
@@ -16,9 +17,11 @@ from app.constants import (
     MSG_CARD_EDIT_OWNER,
     MSG_CARD_INVALID_NUMBER,
     MSG_CARD_SAVED,
+    MSG_ACTION_CANCELLED,
     MSG_CARD_UPDATED,
     MSG_CARDS_EMPTY,
     MSG_CARDS_LIST_HEADER,
+    MSG_MAIN_MENU,
     CALLBACK_CARD_ADD,
     CALLBACK_CARD_BACK,
     CALLBACK_CARD_DELETE,
@@ -79,7 +82,7 @@ async def show_payment_cards_list(
         )
 
     await message.answer(
-        "Керування картками:",
+        MSG_CARDS_FOOTER,
         reply_markup=build_payment_cards_footer_keyboard(),
     )
 
@@ -248,7 +251,7 @@ async def handle_payment_card_delete_cancel(callback: CallbackQuery) -> None:
 
     await callback.answer()
     await callback.message.answer(
-        "Скасовано.",
+        MSG_ACTION_CANCELLED,
         reply_markup=build_main_menu_keyboard(),
     )
 
@@ -343,6 +346,6 @@ async def handle_payment_cards_back(callback: CallbackQuery, state: FSMContext) 
     await state.clear()
     await callback.answer()
     await callback.message.answer(
-        "Головне меню:",
+        MSG_MAIN_MENU,
         reply_markup=build_main_menu_keyboard(),
     )

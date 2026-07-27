@@ -22,7 +22,10 @@ from app.keyboards.recipients import (
     build_recipient_search_keyboard,
 )
 from app.keyboards.settings import build_settings_keyboard
-from app.keyboards.waybills import build_waybill_actions_keyboard
+from app.keyboards.waybills import (
+    build_waybill_actions_keyboard,
+    build_waybills_footer_keyboard,
+)
 
 __all__ = (
     "build_account_limit_keyboard",
@@ -40,4 +43,5 @@ __all__ = (
     "build_recipient_search_keyboard",
     "build_settings_keyboard",
     "build_waybill_actions_keyboard",
+    "build_waybills_footer_keyboard",
 )

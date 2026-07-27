@@ -19,6 +19,7 @@ from app.constants import (
     MSG_RECIPIENTS_LIST_HEADER,
     MSG_RECIPIENTS_SEARCH_EMPTY,
     MSG_RECIPIENTS_SEARCH_PROMPT,
+    MSG_ACTION_CANCELLED,
     MSG_RECIPIENTS_TRUNCATED,
     MSG_NO_ACTIVE_NP_ACCOUNT,
     MSG_NO_ACTIVE_PAYMENT_CARD,
@@ -342,7 +343,7 @@ async def handle_recipient_delete_cancel(callback: CallbackQuery) -> None:
         return
     await callback.answer()
     await callback.message.answer(
-        "Скасовано.",
+        MSG_ACTION_CANCELLED,
         reply_markup=build_main_menu_keyboard(),
     )
 

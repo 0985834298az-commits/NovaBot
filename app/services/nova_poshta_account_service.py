@@ -1,16 +1,31 @@
 from app.models.nova_poshta_account import NovaPoshtaAccount
 from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRepository
+from app.repositories.waybill_repository import WaybillRepository
 from app.services.sender_cache import (
     ensure_sender_cache,
     get_cached_sender_location,
     get_sender_cache_error,
 )
+from app.utils.money import format_money_uah
 
 
 def format_nova_poshta_account(account: NovaPoshtaAccount) -> str:
     """Format a Nova Poshta account for Telegram display."""
     indicator = "🟢" if account.is_active else "⚪️"
     return f"{indicator} {account.account_name}"
+
+
+async def format_nova_poshta_account_with_usage(
+    account: NovaPoshtaAccount,
+    waybill_repository: WaybillRepository,
+) -> str:
+    """Format account name with current-month COD usage."""
+    used = await waybill_repository.get_current_month_cod_total(account.id)
+    indicator = "🟢" if account.is_active else "⚪️"
+    return (
+        f"{indicator} {account.account_name}\n"
+        f"{format_money_uah(used)} / {format_money_uah(account.monthly_limit)}"
+    )
 
 
 async def get_active_api_key(

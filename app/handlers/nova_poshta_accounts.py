@@ -16,6 +16,7 @@ from app.constants import (
     CALLBACK_NP_ACCOUNT_DETAIL_BACK,
     CALLBACK_NP_ACCOUNT_OPEN,
     CALLBACK_NP_ACCOUNT_RENAME,
+    CALLBACK_NP_ACCOUNT_SYNC,
     MSG_NP_ACCOUNT_ACTIVE_CHANGED,
     MSG_NP_ACCOUNT_API_UPDATED,
     MSG_NP_ACCOUNT_DELETE_CONFIRM,
@@ -23,11 +24,16 @@ from app.constants import (
     MSG_NP_ACCOUNT_DETAIL_HEADER,
     MSG_NP_ACCOUNT_RENAMED,
     MSG_NP_ACCOUNT_SAVED,
+    MSG_MAIN_MENU,
     MSG_NP_ACCOUNTS_EMPTY,
+    MSG_NP_ACCOUNTS_FOOTER,
     MSG_NP_ACCOUNTS_LIST_HEADER,
     MSG_NP_ASK_ACCOUNT_NAME,
     MSG_NP_ASK_API_KEY,
     MSG_NP_INVALID_API_KEY,
+    MSG_SYNC_COMPLETE,
+    MSG_SYNC_FAILED,
+    MSG_SYNC_IN_PROGRESS,
 )
 from app.handlers.states import NovaPoshtaAccountWizard
 from app.keyboards import (
@@ -40,8 +46,12 @@ from app.keyboards import (
 from app.models.nova_poshta_account import NovaPoshtaAccount
 from app.nova_poshta import NovaPoshtaClient
 from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRepository
-from app.services.nova_poshta_account_service import format_nova_poshta_account
+from app.repositories.waybill_repository import WaybillRepository
+from app.services.nova_poshta_account_service import (
+    format_nova_poshta_account_with_usage,
+)
 from app.services.sender_cache import ensure_sender_cache, invalidate_sender_cache
+from app.services.waybill_sync_service import sync_user_waybills
 
 router = Router(name="np_accounts")
 
@@ -64,12 +74,28 @@ async def _validate_api_key(api_key: str) -> bool:
 async def show_nova_poshta_accounts_list(
     message: Message,
     account_repository: NovaPoshtaAccountRepository,
+    waybill_repository: WaybillRepository,
     *,
     accounts: list[NovaPoshtaAccount] | None = None,
+    sync_before_show: bool = False,
 ) -> None:
     """Render saved Nova Poshta accounts for the current Telegram user."""
     if message.from_user is None:
         return
+
+    if sync_before_show:
+        try:
+            await sync_user_waybills(
+                telegram_user_id=message.from_user.id,
+                account_repository=account_repository,
+                waybill_repository=waybill_repository,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Automatic Nova Poshta sync failed for user {}: {}",
+                message.from_user.id,
+                exc,
+            )
 
     if accounts is None:
         accounts = await account_repository.get_all_accounts(message.from_user.id)
@@ -84,12 +110,12 @@ async def show_nova_poshta_accounts_list(
     await message.answer(MSG_NP_ACCOUNTS_LIST_HEADER)
     for account in accounts:
         await message.answer(
-            format_nova_poshta_account(account),
+            await format_nova_poshta_account_with_usage(account, waybill_repository),
             reply_markup=build_nova_poshta_account_list_item_keyboard(account.id),
         )
 
     await message.answer(
-        "Керування акаунтами НП:",
+        MSG_NP_ACCOUNTS_FOOTER,
         reply_markup=build_nova_poshta_accounts_footer_keyboard(),
     )
 
@@ -97,6 +123,7 @@ async def show_nova_poshta_accounts_list(
 async def show_nova_poshta_account_detail(
     message: Message,
     account_repository: NovaPoshtaAccountRepository,
+    waybill_repository: WaybillRepository,
     account_id: int,
     telegram_user_id: int,
 ) -> None:
@@ -104,11 +131,16 @@ async def show_nova_poshta_account_detail(
     account = await account_repository.get_by_id(account_id, telegram_user_id)
     if account is None:
         await message.answer(MSG_NP_ACCOUNTS_EMPTY)
-        await show_nova_poshta_accounts_list(message, account_repository)
+        await show_nova_poshta_accounts_list(
+            message,
+            account_repository,
+            waybill_repository,
+        )
         return
 
+    account_text = await format_nova_poshta_account_with_usage(account, waybill_repository)
     await message.answer(
-        f"{MSG_NP_ACCOUNT_DETAIL_HEADER}\n\n{format_nova_poshta_account(account)}",
+        f"{MSG_NP_ACCOUNT_DETAIL_HEADER}\n\n{account_text}",
         reply_markup=build_nova_poshta_account_detail_keyboard(account.id),
     )
 
@@ -117,10 +149,18 @@ async def begin_nova_poshta_accounts_list(
     message: Message,
     state: FSMContext,
     account_repository: NovaPoshtaAccountRepository,
+    waybill_repository: WaybillRepository,
+    *,
+    sync_before_show: bool = False,
 ) -> None:
     """Open the Nova Poshta accounts section."""
     await state.clear()
-    await show_nova_poshta_accounts_list(message, account_repository)
+    await show_nova_poshta_accounts_list(
+        message,
+        account_repository,
+        waybill_repository,
+        sync_before_show=sync_before_show,
+    )
 
 
 @router.callback_query(F.data == CALLBACK_NP_ACCOUNT_ADD)
@@ -156,6 +196,7 @@ async def handle_nova_poshta_account_add_api_key(
     message: Message,
     state: FSMContext,
     account_repository: NovaPoshtaAccountRepository,
+    waybill_repository: WaybillRepository,
 ) -> None:
     if message.from_user is None or message.text is None:
         return
@@ -186,13 +227,14 @@ async def handle_nova_poshta_account_add_api_key(
 
     await state.clear()
     await message.answer(MSG_NP_ACCOUNT_SAVED)
-    await show_nova_poshta_accounts_list(message, account_repository)
+    await show_nova_poshta_accounts_list(message, account_repository, waybill_repository)
 
 
 @router.callback_query(F.data.startswith(f"{CALLBACK_NP_ACCOUNT_OPEN}:"))
 async def handle_nova_poshta_account_open(
     callback: CallbackQuery,
     account_repository: NovaPoshtaAccountRepository,
+    waybill_repository: WaybillRepository,
 ) -> None:
     if callback.data is None or callback.message is None or callback.from_user is None:
         return
@@ -206,6 +248,7 @@ async def handle_nova_poshta_account_open(
     await show_nova_poshta_account_detail(
         callback.message,
         account_repository,
+        waybill_repository,
         account_id,
         callback.from_user.id,
     )
@@ -215,6 +258,7 @@ async def handle_nova_poshta_account_open(
 async def handle_nova_poshta_account_activate(
     callback: CallbackQuery,
     account_repository: NovaPoshtaAccountRepository,
+    waybill_repository: WaybillRepository,
 ) -> None:
     if callback.data is None or callback.message is None or callback.from_user is None:
         return
@@ -238,6 +282,7 @@ async def handle_nova_poshta_account_activate(
     await show_nova_poshta_account_detail(
         callback.message,
         account_repository,
+        waybill_repository,
         account_id,
         callback.from_user.id,
     )
@@ -247,12 +292,13 @@ async def handle_nova_poshta_account_activate(
 async def handle_nova_poshta_account_detail_back(
     callback: CallbackQuery,
     account_repository: NovaPoshtaAccountRepository,
+    waybill_repository: WaybillRepository,
 ) -> None:
     if callback.message is None or callback.from_user is None:
         return
 
     await callback.answer()
-    await show_nova_poshta_accounts_list(callback.message, account_repository)
+    await show_nova_poshta_accounts_list(callback.message, account_repository, waybill_repository)
 
 
 @router.callback_query(
@@ -280,6 +326,7 @@ async def handle_nova_poshta_account_delete_prompt(callback: CallbackQuery) -> N
 async def handle_nova_poshta_account_delete_confirm(
     callback: CallbackQuery,
     account_repository: NovaPoshtaAccountRepository,
+    waybill_repository: WaybillRepository,
 ) -> None:
     if callback.data is None or callback.message is None or callback.from_user is None:
         return
@@ -301,13 +348,14 @@ async def handle_nova_poshta_account_delete_confirm(
         await ensure_sender_cache(callback.from_user.id, active_account.api_key)
 
     await callback.message.answer(MSG_NP_ACCOUNT_DELETED)
-    await show_nova_poshta_accounts_list(callback.message, account_repository)
+    await show_nova_poshta_accounts_list(callback.message, account_repository, waybill_repository)
 
 
 @router.callback_query(F.data.startswith(f"{CALLBACK_NP_ACCOUNT_DELETE_NO}:"))
 async def handle_nova_poshta_account_delete_cancel(
     callback: CallbackQuery,
     account_repository: NovaPoshtaAccountRepository,
+    waybill_repository: WaybillRepository,
 ) -> None:
     if callback.data is None or callback.message is None or callback.from_user is None:
         return
@@ -315,12 +363,13 @@ async def handle_nova_poshta_account_delete_cancel(
     account_id = _parse_account_id(callback.data, CALLBACK_NP_ACCOUNT_DELETE_NO)
     await callback.answer()
     if account_id is None:
-        await show_nova_poshta_accounts_list(callback.message, account_repository)
+        await show_nova_poshta_accounts_list(callback.message, account_repository, waybill_repository)
         return
 
     await show_nova_poshta_account_detail(
         callback.message,
         account_repository,
+        waybill_repository,
         account_id,
         callback.from_user.id,
     )
@@ -351,6 +400,7 @@ async def handle_nova_poshta_account_rename_save(
     message: Message,
     state: FSMContext,
     account_repository: NovaPoshtaAccountRepository,
+    waybill_repository: WaybillRepository,
 ) -> None:
     if message.from_user is None or message.text is None or not message.text.strip():
         await message.answer(MSG_NP_ASK_ACCOUNT_NAME)
@@ -378,6 +428,7 @@ async def handle_nova_poshta_account_rename_save(
     await show_nova_poshta_account_detail(
         message,
         account_repository,
+        waybill_repository,
         int(account_id),
         message.from_user.id,
     )
@@ -408,6 +459,7 @@ async def handle_nova_poshta_account_change_api_save(
     message: Message,
     state: FSMContext,
     account_repository: NovaPoshtaAccountRepository,
+    waybill_repository: WaybillRepository,
 ) -> None:
     if message.from_user is None or message.text is None:
         return
@@ -447,6 +499,7 @@ async def handle_nova_poshta_account_change_api_save(
     await show_nova_poshta_account_detail(
         message,
         account_repository,
+        waybill_repository,
         int(account_id),
         message.from_user.id,
     )
@@ -463,6 +516,51 @@ async def handle_nova_poshta_accounts_back(
     await state.clear()
     await callback.answer()
     await callback.message.answer(
-        "Головне меню:",
+        MSG_MAIN_MENU,
         reply_markup=build_main_menu_keyboard(),
+    )
+
+
+@router.callback_query(F.data == CALLBACK_NP_ACCOUNT_SYNC)
+async def handle_nova_poshta_account_sync(
+    callback: CallbackQuery,
+    account_repository: NovaPoshtaAccountRepository,
+    waybill_repository: WaybillRepository,
+) -> None:
+    if callback.message is None or callback.from_user is None:
+        return
+
+    await callback.answer()
+    progress_message = await callback.message.answer(MSG_SYNC_IN_PROGRESS)
+    try:
+        result = await sync_user_waybills(
+            telegram_user_id=callback.from_user.id,
+            account_repository=account_repository,
+            waybill_repository=waybill_repository,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Manual Nova Poshta sync failed for user {}: {}",
+            callback.from_user.id,
+            exc,
+        )
+        await progress_message.edit_text(MSG_SYNC_FAILED)
+        return
+
+    accounts = await account_repository.get_all_accounts(callback.from_user.id)
+    if accounts and len(result.failed_accounts) == len(accounts):
+        await progress_message.edit_text(MSG_SYNC_FAILED)
+        return
+
+    await progress_message.edit_text(
+        MSG_SYNC_COMPLETE.format(
+            added=result.added,
+            updated=result.updated,
+            deleted=result.deleted,
+        ),
+    )
+    await show_nova_poshta_accounts_list(
+        callback.message,
+        account_repository,
+        waybill_repository,
     )

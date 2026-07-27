@@ -32,17 +32,19 @@ def format_waybill_details(
 ) -> str:
     """Format a waybill order card for Telegram."""
     delivery_cost = waybill.delivery_cost or "—"
+    status = waybill.shipment_status or "🟡 Створена"
     return (
         f"№{index}\n\n"
         f"👤 {waybill.recipient_name}\n\n"
         f"📞 {format_phone_display(waybill.recipient_phone)}\n\n"
         f"🏙 {waybill.city_name}\n\n"
         f"🏢 №{waybill.warehouse_number}\n\n"
-        f"🛍 Products\n\n"
+        f"🛍 Товари\n\n"
         f"{format_products_block(items)}\n\n"
-        f"💰 COD: {waybill.cod_amount}\n\n"
-        f"📄 TTN: {waybill.ttn_number}\n\n"
-        f"🚚 Shipping cost: {delivery_cost}"
+        f"💰 Накладений платіж: {waybill.cod_amount} грн\n\n"
+        f"📄 ТТН: {waybill.ttn_number}\n\n"
+        f"🚚 Вартість доставки: {delivery_cost} грн\n\n"
+        f"{status}"
     )
 
 

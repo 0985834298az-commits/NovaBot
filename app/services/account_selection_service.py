@@ -77,9 +77,7 @@ def format_account_usage_block(usage: AccountUsageInfo) -> str:
     return (
         f"{indicator} {usage.account.account_name}\n"
         f"{format_money_uah(usage.current_month_cod)} / "
-        f"{format_money_uah(usage.monthly_limit)}\n"
-        f"Remaining:\n"
-        f"{format_money_uah(usage.remaining)}"
+        f"{format_money_uah(usage.monthly_limit)}"
     )
 
 
