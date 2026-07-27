@@ -11,6 +11,11 @@ from app.models.payment_card import PaymentCard
 from app.nova_poshta import NovaPoshtaClient
 from app.nova_poshta.exceptions import NovaPoshtaError
 from app.repositories.payment_card_repository import PaymentCardRepository
+from app.utils.payment_card_diagnostics import (
+    extract_card_number,
+    extract_card_ref,
+    log_payment_cards_lookup_failed,
+)
 
 
 def _normalize_digits(value: str | None) -> str:
@@ -18,26 +23,11 @@ def _normalize_digits(value: str | None) -> str:
 
 
 def _extract_card_ref(item: dict[str, Any]) -> str:
-    for key in ("Ref", "PaymentCard", "PaymentCardRef", "CardRef"):
-        ref = str(item.get(key) or "").strip()
-        if ref:
-            return ref
-    return ""
+    return extract_card_ref(item)
 
 
 def _extract_card_number(item: dict[str, Any]) -> str:
-    for key in (
-        "Number",
-        "CardNumber",
-        "PaymentCardNumber",
-        "Card",
-        "Pan",
-        "Description",
-    ):
-        digits = _normalize_digits(str(item.get(key) or ""))
-        if len(digits) >= 4:
-            return digits
-    return ""
+    return extract_card_number(item)
 
 
 def _cards_match(stored_number: str, remote_number: str) -> bool:
@@ -77,12 +67,24 @@ def find_card_ref_in_response(
 async def resolve_card_ref(
     client: NovaPoshtaClient,
     card_number: str,
+    *,
+    api_key_name: str = "",
 ) -> str:
     """Resolve Nova Poshta card Ref for a stored card number."""
-    response = await client.get_payment_cards()
+    response = await client.get_payment_cards(api_key_name=api_key_name)
     card_ref = find_card_ref_in_response(response, card_number)
     if card_ref is None:
+        log_payment_cards_lookup_failed(
+            api_key_name=api_key_name,
+            card_number=card_number,
+            response=response,
+        )
         raise NovaPoshtaError(MSG_CARD_NOT_FOUND_IN_NP)
+    logger.info(
+        "Nova Poshta payment cards lookup succeeded: api_key_name={} card_ref={}",
+        api_key_name or "unknown",
+        card_ref,
+    )
     return card_ref
 
 
@@ -110,10 +112,15 @@ async def refresh_card_ref(
     card: PaymentCard,
     api_key: str,
     payment_card_repository: PaymentCardRepository,
+    api_key_name: str = "",
 ) -> PaymentCard:
     """Refresh Nova Poshta card Ref for a stored card."""
     async with NovaPoshtaClient(api_key) as client:
-        card_ref = await resolve_card_ref(client, card.card_number)
+        card_ref = await resolve_card_ref(
+            client,
+            card.card_number,
+            api_key_name=api_key_name,
+        )
     return await payment_card_repository.update_card_ref(card, card_ref=card_ref)
 
 
@@ -122,6 +129,7 @@ async def ensure_active_card_ref(
     active_card: PaymentCard,
     api_key: str,
     payment_card_repository: PaymentCardRepository,
+    api_key_name: str = "",
 ) -> PaymentCard:
     """Ensure the active card has a Nova Poshta Ref before TTN creation."""
     if active_card.card_ref.strip():
@@ -130,4 +138,5 @@ async def ensure_active_card_ref(
         card=active_card,
         api_key=api_key,
         payment_card_repository=payment_card_repository,
+        api_key_name=api_key_name,
     )

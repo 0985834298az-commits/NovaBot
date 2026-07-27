@@ -43,6 +43,7 @@ from app.nova_poshta.exceptions import (
     NovaPoshtaResponseError,
     NovaPoshtaTransportError,
 )
+from app.utils.payment_card_diagnostics import log_payment_cards_api_attempt
 from app.utils.ssl import create_ssl_context
 
 
@@ -441,21 +442,34 @@ class NovaPoshtaClient:
             {"Ref": document_ref},
         )
 
-    async def get_payment_cards(self) -> dict[str, Any]:
+    async def get_payment_cards(self, *, api_key_name: str = "") -> dict[str, Any]:
         """Load payment cards linked to the Nova Poshta account."""
         response = await self._call(
             MODEL_PAYMENT,
             METHOD_GET_PAYMENT_CARDS,
             {},
         )
+        log_payment_cards_api_attempt(
+            api_key_name=api_key_name,
+            model_name=MODEL_PAYMENT,
+            called_method=METHOD_GET_PAYMENT_CARDS,
+            response=response,
+        )
         if response.get("success") is True and response.get("data"):
             return response
 
-        return await self._call(
+        fallback = await self._call(
             MODEL_PAYMENT,
             METHOD_WALLET_MANAGEMENT,
             {},
         )
+        log_payment_cards_api_attempt(
+            api_key_name=api_key_name,
+            model_name=MODEL_PAYMENT,
+            called_method=METHOD_WALLET_MANAGEMENT,
+            response=fallback,
+        )
+        return fallback
 
     async def save_internet_document(
         self,

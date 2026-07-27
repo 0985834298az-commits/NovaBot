@@ -44,7 +44,6 @@ from app.nova_poshta import NovaPoshtaClient
 from app.nova_poshta.exceptions import NovaPoshtaError
 from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRepository
 from app.repositories.payment_card_repository import PaymentCardRepository
-from app.services.nova_poshta_account_service import get_active_api_key
 from app.services.payment_card_service import refresh_card_ref, resolve_card_ref
 from app.utils.payment_card import format_payment_card, validate_card_number
 
@@ -57,12 +56,16 @@ async def _resolve_card_ref_for_user(
     card_number: str,
     nova_poshta_account_repository: NovaPoshtaAccountRepository,
 ) -> str:
-    api_key = await get_active_api_key(nova_poshta_account_repository, telegram_user_id)
-    if api_key is None:
+    active_account = await nova_poshta_account_repository.get_active_account(telegram_user_id)
+    if active_account is None:
         raise NovaPoshtaError(MSG_NO_ACTIVE_NP_ACCOUNT)
 
-    async with NovaPoshtaClient(api_key) as client:
-        return await resolve_card_ref(client, card_number)
+    async with NovaPoshtaClient(active_account.api_key) as client:
+        return await resolve_card_ref(
+            client,
+            card_number,
+            api_key_name=active_account.account_name,
+        )
 
 
 def _parse_card_id(callback_data: str, prefix: str) -> int | None:
@@ -231,18 +234,18 @@ async def handle_payment_card_select(
         return
 
     if not card.card_ref.strip():
-        api_key = await get_active_api_key(
-            nova_poshta_account_repository,
+        active_account = await nova_poshta_account_repository.get_active_account(
             callback.from_user.id,
         )
-        if api_key is None:
+        if active_account is None:
             await callback.message.answer(MSG_NO_ACTIVE_NP_ACCOUNT)
             return
         try:
             card = await refresh_card_ref(
                 card=card,
-                api_key=api_key,
+                api_key=active_account.api_key,
                 payment_card_repository=payment_card_repository,
+                api_key_name=active_account.account_name,
             )
         except NovaPoshtaError as exc:
             await callback.message.answer(str(exc))

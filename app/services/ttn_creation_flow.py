@@ -252,10 +252,12 @@ async def _create_ttn_from_pending(
         return False
 
     api_key, sender_location = prepared
+    active_account = await nova_poshta_account_repository.get_active_account(message.from_user.id)
     active_card = await ensure_active_card_ref(
         active_card=active_card,
         api_key=api_key,
         payment_card_repository=payment_card_repository,
+        api_key_name=active_account.account_name if active_account else "",
     )
     await message.answer(MSG_TTN_CREATING)
 
