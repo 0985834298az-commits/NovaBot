@@ -18,18 +18,21 @@ from app.nova_poshta.constants import (
     DOCUMENT_LIST_PAGE_SIZE,
     METHOD_GET_DOCUMENT,
     METHOD_GET_DOCUMENT_LIST,
+    METHOD_GET_PAYMENT_CARDS,
     METHOD_GET_STATUS,
     METHOD_GET_STATUS_DOCUMENTS,
     METHOD_GET_WAREHOUSES,
     METHOD_DELETE,
     METHOD_SAVE,
     METHOD_UPDATE,
+    METHOD_WALLET_MANAGEMENT,
     METHOD_SEARCH_SETTLEMENTS,
     MODEL_ADDRESS,
     MODEL_COMMON,
     MODEL_CONTACT_PERSON,
     MODEL_COUNTERPARTY,
     MODEL_INTERNET_DOCUMENT,
+    MODEL_PAYMENT,
     MODEL_TRACKING_DOCUMENT,
     SEARCH_LIMIT,
     SEARCH_PAGE,
@@ -436,6 +439,22 @@ class NovaPoshtaClient:
             MODEL_INTERNET_DOCUMENT,
             METHOD_GET_DOCUMENT,
             {"Ref": document_ref},
+        )
+
+    async def get_payment_cards(self) -> dict[str, Any]:
+        """Load payment cards linked to the Nova Poshta account."""
+        response = await self._call(
+            MODEL_PAYMENT,
+            METHOD_GET_PAYMENT_CARDS,
+            {},
+        )
+        if response.get("success") is True and response.get("data"):
+            return response
+
+        return await self._call(
+            MODEL_PAYMENT,
+            METHOD_WALLET_MANAGEMENT,
+            {},
         )
 
     async def save_internet_document(

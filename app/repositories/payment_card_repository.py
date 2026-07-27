@@ -15,6 +15,7 @@ class PaymentCardRepository:
         *,
         telegram_user_id: int,
         card_name: str,
+        card_ref: str,
         owner_name: str,
         card_number: str,
         bank_name: str | None = None,
@@ -24,6 +25,7 @@ class PaymentCardRepository:
         card = PaymentCard(
             telegram_user_id=telegram_user_id,
             card_name=card_name.strip(),
+            card_ref=card_ref.strip(),
             owner_name=owner_name.strip(),
             card_number=card_number,
             bank_name=bank_name.strip() if bank_name else None,
@@ -93,21 +95,35 @@ class PaymentCardRepository:
         telegram_user_id: int,
         *,
         card_name: str,
+        card_ref: str,
         owner_name: str,
         card_number: str,
         bank_name: str | None = None,
     ) -> PaymentCard | None:
-        """Update card name, owner name, and card number."""
+        """Update card name, owner name, card number, and Nova Poshta Ref."""
         card = await self.get_by_id(card_id, telegram_user_id)
         if card is None:
             return None
 
         card.card_name = card_name.strip()
+        card.card_ref = card_ref.strip()
         card.owner_name = owner_name.strip()
         card.card_number = card_number
         if bank_name is not None:
             card.bank_name = bank_name.strip() or None
 
+        await self._session.flush()
+        await self._session.refresh(card)
+        return card
+
+    async def update_card_ref(
+        self,
+        card: PaymentCard,
+        *,
+        card_ref: str,
+    ) -> PaymentCard:
+        """Update only the Nova Poshta card Ref."""
+        card.card_ref = card_ref.strip()
         await self._session.flush()
         await self._session.refresh(card)
         return card

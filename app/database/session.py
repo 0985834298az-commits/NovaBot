@@ -132,6 +132,11 @@ def _migrate_payment_cards(connection) -> None:
                 "WHERE card_name IS NULL OR card_name = ''",
             ),
         )
+    columns = {column["name"] for column in inspector.get_columns("payment_cards")}
+    if "card_ref" not in columns:
+        connection.execute(
+            text("ALTER TABLE payment_cards ADD COLUMN card_ref VARCHAR(36) DEFAULT ''"),
+        )
 
 
 async def get_session(

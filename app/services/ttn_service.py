@@ -594,18 +594,23 @@ def build_save_properties(
     }
 
     cod_amount = wizard_data.get("cod_amount")
+    payment_card_ref = wizard_data.get("payment_card_ref")
+    payment_card_name = wizard_data.get("payment_card_name")
     if cod_amount:
-        properties["BackwardDeliveryData"] = [
-            {
-                "PayerType": "Recipient",
-                "CargoType": "Money",
-                "RedeliveryString": str(cod_amount),
-            },
-        ]
-
-    payment_card_number = wizard_data.get("payment_card_number")
-    if payment_card_number:
-        properties["PaymentCard"] = str(payment_card_number)
+        backward_delivery_item: dict[str, Any] = {
+            "PayerType": "Recipient",
+            "CargoType": "Money",
+            "RedeliveryString": str(cod_amount),
+        }
+        if payment_card_ref:
+            backward_delivery_item["PaymentCard"] = str(payment_card_ref)
+        properties["BackwardDeliveryData"] = [backward_delivery_item]
+        logger.info(
+            "COD payout card: selected_card={} card_ref={} backward_delivery_data={}",
+            payment_card_name,
+            payment_card_ref,
+            properties["BackwardDeliveryData"],
+        )
 
     return properties
 

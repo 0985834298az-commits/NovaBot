@@ -45,8 +45,12 @@ from app.services.account_selection_service import (
 )
 from app.services.nova_poshta_account_service import ensure_active_account_sender_cache
 from app.services.order_service import create_ttn_with_order_items
-from app.services.waybill_sync_service import sync_user_waybills
+from app.services.payment_card_service import (
+    apply_active_card_to_wizard,
+    ensure_active_card_ref,
+)
 from app.services.sender_cache import get_sender_cache_error
+from app.services.waybill_sync_service import sync_user_waybills
 from app.services.ttn_service import (
     TtnOrderInput,
     build_print_link,
@@ -226,6 +230,8 @@ async def _create_ttn_from_pending(
         )
         return False
 
+    assert active_card is not None
+
     try:
         prepared = await ensure_active_account_sender_cache(
             nova_poshta_account_repository,
@@ -246,6 +252,11 @@ async def _create_ttn_from_pending(
         return False
 
     api_key, sender_location = prepared
+    active_card = await ensure_active_card_ref(
+        active_card=active_card,
+        api_key=api_key,
+        payment_card_repository=payment_card_repository,
+    )
     await message.answer(MSG_TTN_CREATING)
 
     try:
@@ -283,7 +294,7 @@ async def _create_ttn_from_pending(
                 sender_profile = await fetch_sender_profile(client)
             save_recipient = False
 
-        wizard_data["payment_card_number"] = active_card.card_number
+        apply_active_card_to_wizard(wizard_data, active_card)
         document, _waybill = await create_ttn_with_order_items(
             telegram_user_id=message.from_user.id,
             wizard_data=wizard_data,

@@ -18,6 +18,7 @@ class PaymentCard(Base):
         nullable=False,
     )
     card_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    card_ref: Mapped[str] = mapped_column(String(36), nullable=False, default="")
     owner_name: Mapped[str] = mapped_column(String(255), nullable=False)
     card_number: Mapped[str] = mapped_column(String(16), nullable=False)
     bank_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
