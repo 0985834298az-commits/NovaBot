@@ -48,7 +48,9 @@ from app.nova_poshta.exceptions import NovaPoshtaError
 from app.repositories.payment_card_repository import PaymentCardRepository
 from app.repositories.recipient_repository import RecipientRepository
 from app.repositories.user_repository import UserRepository
+from app.repositories.waybill_repository import WaybillRepository
 from app.services.sender_cache import get_cached_sender_location, is_sender_cache_ready
+from app.services.waybill_service import build_waybill_create_fields
 from app.services.ttn_service import (
     build_print_link,
     build_wizard_data_from_saved_recipient,
@@ -208,6 +210,7 @@ async def handle_recipient_ttn_cod(
     user_repository: UserRepository,
     recipient_repository: RecipientRepository,
     payment_card_repository: PaymentCardRepository,
+    waybill_repository: WaybillRepository,
 ) -> None:
     if message.from_user is None or message.text is None:
         return
@@ -283,6 +286,14 @@ async def handle_recipient_ttn_cod(
     ttn_number = str(document.get("IntDocNumber") or "—")
     reference = str(document.get("Ref") or "")
     delivery_cost = document.get("CostOnSite") or document.get("DocumentCost")
+
+    await waybill_repository.create_waybill(
+        **build_waybill_create_fields(
+            telegram_user_id=message.from_user.id,
+            document=document,
+            wizard_data=wizard_data,
+        ),
+    )
 
     await state.clear()
     await message.answer(

@@ -16,6 +16,7 @@ from app.nova_poshta.constants import (
     METHOD_GET_COUNTERPARTY_ADDRESSES,
     METHOD_GET_COUNTERPARTY_CONTACT_PERSONS,
     METHOD_GET_STATUS,
+    METHOD_GET_STATUS_DOCUMENTS,
     METHOD_GET_WAREHOUSES,
     METHOD_SAVE,
     METHOD_UPDATE,
@@ -25,6 +26,7 @@ from app.nova_poshta.constants import (
     MODEL_CONTACT_PERSON,
     MODEL_COUNTERPARTY,
     MODEL_INTERNET_DOCUMENT,
+    MODEL_TRACKING_DOCUMENT,
     SEARCH_LIMIT,
     SEARCH_PAGE,
 )
@@ -178,6 +180,17 @@ class NovaPoshtaClient:
     async def get_status(self) -> dict[str, Any]:
         """Call Common/getServiceTypes and return parsed JSON."""
         return await self._call(MODEL_COMMON, METHOD_GET_STATUS)
+
+    async def get_status_documents(
+        self,
+        documents: list[dict[str, str]],
+    ) -> dict[str, Any]:
+        """Track TTN statuses through TrackingDocument.getStatusDocuments."""
+        return await self._call(
+            MODEL_TRACKING_DOCUMENT,
+            METHOD_GET_STATUS_DOCUMENTS,
+            {"Documents": documents},
+        )
 
     async def validate_api_key(self) -> bool:
         """Return True when the configured API key is valid."""

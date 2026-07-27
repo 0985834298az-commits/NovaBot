@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.repositories.payment_card_repository import PaymentCardRepository
 from app.repositories.recipient_repository import RecipientRepository
+from app.repositories.waybill_repository import WaybillRepository
 from app.repositories.user_repository import UserRepository
 
 
@@ -27,6 +28,7 @@ class DatabaseMiddleware(BaseMiddleware):
             data["user_repository"] = UserRepository(session)
             data["recipient_repository"] = RecipientRepository(session)
             data["payment_card_repository"] = PaymentCardRepository(session)
+            data["waybill_repository"] = WaybillRepository(session)
 
             try:
                 result = await handler(event, data)

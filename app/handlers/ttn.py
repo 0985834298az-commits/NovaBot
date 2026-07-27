@@ -21,11 +21,13 @@ from app.nova_poshta.exceptions import NovaPoshtaError
 from app.repositories.payment_card_repository import PaymentCardRepository
 from app.repositories.recipient_repository import RecipientRepository
 from app.repositories.user_repository import UserRepository
+from app.repositories.waybill_repository import WaybillRepository
 from app.services.sender_cache import (
     get_cached_sender_location,
     get_sender_cache_error,
     is_sender_cache_ready,
 )
+from app.services.waybill_service import build_waybill_create_fields
 from app.services.ttn_service import (
     build_print_link,
     create_internet_document,
@@ -93,6 +95,7 @@ async def handle_ttn_order_input(
     user_repository: UserRepository,
     recipient_repository: RecipientRepository,
     payment_card_repository: PaymentCardRepository,
+    waybill_repository: WaybillRepository,
 ) -> None:
     """Parse one message and create a TTN immediately."""
     if message.from_user is None or message.text is None:
@@ -157,6 +160,14 @@ async def handle_ttn_order_input(
     await recipient_repository.save_recipient(
         telegram_user_id=message.from_user.id,
         **extract_recipient_save_fields(wizard_data),
+    )
+
+    await waybill_repository.create_waybill(
+        **build_waybill_create_fields(
+            telegram_user_id=message.from_user.id,
+            document=document,
+            wizard_data=wizard_data,
+        ),
     )
 
     await state.clear()

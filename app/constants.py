@@ -37,6 +37,10 @@ CALLBACK_REPLACE_API_KEY = "replace_api_key"
 
 MSG_CREATE_TTN_SOON = "Створення ТТН скоро буде доступне."
 MSG_WAYBILLS_EMPTY = "Історія накладних порожня."
+MSG_WAYBILLS_LIST_HEADER = "Активні накладні:"
+WAYBILL_INITIAL_STATUS = "Створено"
+WAYBILL_INITIAL_STATUS_CODE = "1"
+WAYBILL_CHECK_INTERVAL_SECONDS = 300
 MSG_RECIPIENTS_EMPTY = "Список одержувачів порожній."
 MSG_RECIPIENTS_LIST_HEADER = "Збережені одержувачі:"
 MSG_RECIPIENTS_SEARCH_PROMPT = "Введіть частину імені або телефону:"

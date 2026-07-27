@@ -11,16 +11,17 @@ from app.constants import (
     BTN_RECIPIENTS,
     BTN_SETTINGS,
     MSG_SETTINGS_SOON,
-    MSG_WAYBILLS_EMPTY,
     API_KEY_VISIBLE_CHARS,
 )
 from app.handlers.payment_cards import begin_payment_cards_list
 from app.handlers.recipients import begin_recipients_list
+from app.handlers.waybills import show_active_waybills
 from app.handlers.states import WaitingForApiKey
 from app.handlers.ttn import begin_ttn_wizard
 from app.keyboards import build_main_menu_keyboard, build_replace_api_key_keyboard
 from app.repositories.payment_card_repository import PaymentCardRepository
 from app.repositories.recipient_repository import RecipientRepository
+from app.repositories.waybill_repository import WaybillRepository
 from app.repositories.user_repository import UserRepository
 from app.utils.api_key import mask_api_key
 
@@ -40,13 +41,14 @@ async def handle_create_ttn(
 
 
 @router.message(F.text == BTN_MY_WAYBILLS)
-async def handle_my_waybills(message: Message, state: FSMContext) -> None:
-    """Placeholder for waybill history."""
+async def handle_my_waybills(
+    message: Message,
+    state: FSMContext,
+    waybill_repository: WaybillRepository,
+) -> None:
+    """Show active waybills."""
     await state.clear()
-    await message.answer(
-        MSG_WAYBILLS_EMPTY,
-        reply_markup=build_main_menu_keyboard(),
-    )
+    await show_active_waybills(message, waybill_repository)
 
 
 @router.message(F.text == BTN_RECIPIENTS)

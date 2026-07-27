@@ -1,3 +1,5 @@
+import asyncio
+
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -23,6 +25,7 @@ from app.handlers import (
     ttn_router,
 )
 from app.services.sender_cache import initialize_sender_cache, resolve_startup_api_key
+from app.services.waybill_tracker import run_waybill_status_checker
 
 
 def create_bot(settings: Settings) -> Bot:
@@ -78,12 +81,24 @@ async def on_startup(settings: Settings) -> tuple[Bot, Dispatcher]:
     else:
         await initialize_sender_cache(startup_api_key)
 
+    dispatcher["waybill_tracker_task"] = asyncio.create_task(
+        run_waybill_status_checker(session_factory),
+    )
+
     logger.info("NovaBot {} started successfully", VERSION)
     return bot, dispatcher
 
 
 async def on_shutdown(dispatcher: Dispatcher) -> None:
     """Release resources on shutdown."""
+    tracker_task = dispatcher.get("waybill_tracker_task")
+    if tracker_task is not None:
+        tracker_task.cancel()
+        try:
+            await tracker_task
+        except asyncio.CancelledError:
+            pass
+
     engine = dispatcher.get("engine")
     if engine is not None:
         await engine.dispose()

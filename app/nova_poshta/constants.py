@@ -10,6 +10,7 @@ MODEL_ADDRESS = "Address"
 MODEL_COUNTERPARTY = "Counterparty"
 MODEL_CONTACT_PERSON = "ContactPerson"
 MODEL_INTERNET_DOCUMENT = "InternetDocument"
+MODEL_TRACKING_DOCUMENT = "TrackingDocument"
 
 METHOD_GET_STATUS = "getServiceTypes"
 METHOD_SEARCH_SETTLEMENTS = "searchSettlements"
@@ -20,6 +21,7 @@ METHOD_GET_COUNTERPARTY_ADDRESSES = "getCounterpartyAddresses"
 METHOD_GET_COUNTERPARTY_CONTACT_PERSONS = "getCounterpartyContactPersons"
 METHOD_SAVE = "save"
 METHOD_UPDATE = "update"
+METHOD_GET_STATUS_DOCUMENTS = "getStatusDocuments"
 
 PRINT_DOCUMENT_URL = (
     "https://my.novaposhta.ua/orders/printDocument/orders[]/{document_ref}/type/pdf/apiKey/{api_key}"
