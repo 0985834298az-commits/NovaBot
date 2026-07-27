@@ -6,7 +6,12 @@ from decimal import Decimal
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.constants import WAYBILL_DELETED_STATUS_CODES, WAYBILL_INITIAL_STATUS, WAYBILL_INITIAL_STATUS_CODE
+from app.constants import (
+    WAYBILL_DELETED_STATUS_CODES,
+    WAYBILL_INITIAL_STATUS,
+    WAYBILL_INITIAL_STATUS_CODE,
+    WAYBILL_LIST_ACTIVE_STATUS_CODES,
+)
 from app.models.waybill import Waybill
 
 
@@ -64,10 +69,13 @@ class WaybillRepository:
         return waybill
 
     async def get_active(self, telegram_user_id: int) -> list[Waybill]:
-        """Return visible waybills ordered by creation time."""
+        """Return in-progress waybills shown in the My Waybills list."""
         result = await self._session.execute(
             select(Waybill)
-            .where(Waybill.telegram_user_id == telegram_user_id)
+            .where(
+                Waybill.telegram_user_id == telegram_user_id,
+                Waybill.shipment_status_code.in_(WAYBILL_LIST_ACTIVE_STATUS_CODES),
+            )
             .order_by(Waybill.created_at.asc(), Waybill.id.asc()),
         )
         return list(result.scalars().all())

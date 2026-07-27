@@ -38,12 +38,25 @@ MAIN_MENU_BUTTONS = frozenset(
     }
 )
 
-MSG_WAYBILLS_EMPTY = "📄 Активних накладних немає."
 MSG_WAYBILLS_LIST_HEADER = "📄 Мої накладні:"
+MSG_WAYBILLS_EMPTY = "📄 Мої накладні:\n\nАктивних накладних немає."
 MSG_WAYBILLS_FOOTER = "📄 Керування накладними:"
 WAYBILL_INITIAL_STATUS = "🟡 Створена"
 WAYBILL_INITIAL_STATUS_CODE = "1"
 WAYBILL_DELETED_STATUS_CODES = frozenset({"2", "3"})
+WAYBILL_LIST_ACTIVE_STATUS_CODES = frozenset(
+    {
+        "1",  # 🟡 Створена
+        "4",
+        "5",
+        "6",
+        "41",
+        "104",  # 🚚 У дорозі
+        "7",
+        "8",
+        "105",  # 📦 Прибула у відділення
+    }
+)
 WAYBILL_CHECK_INTERVAL_SECONDS = 300
 
 BTN_SYNC = "🔄 Синхронізувати"

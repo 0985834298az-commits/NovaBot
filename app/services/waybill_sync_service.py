@@ -159,6 +159,14 @@ async def _fetch_remote_documents(client: NovaPoshtaClient) -> list[dict[str, An
         if response.get("success") is not True:
             errors = [str(error) for error in response.get("errors") or []]
             msg = "; ".join(errors) or "Nova Poshta failed to return document list"
+            logger.error(
+                "Nova Poshta getDocumentList failed: DateTimeFrom={} DateTimeTo={} Page={} errors={} response={}",
+                _format_np_date(date_from),
+                _format_np_date(now),
+                page,
+                errors,
+                response,
+            )
             raise NovaPoshtaError(msg)
 
         batch = [item for item in response.get("data") or [] if isinstance(item, dict)]
@@ -219,6 +227,13 @@ async def sync_account_waybills(
     """Synchronize one Nova Poshta account with the local database."""
     result = SyncResult()
     synced_at = datetime.now(UTC)
+    logger.info(
+        "Starting Nova Poshta sync for user {} account {} (id={}, active={})",
+        telegram_user_id,
+        account.account_name,
+        account.id,
+        account.is_active,
+    )
     local_waybills = await waybill_repository.get_by_account_id(telegram_user_id, account.id)
     unassigned_waybills = await waybill_repository.get_unassigned(telegram_user_id)
     local_by_ref = {
@@ -321,35 +336,44 @@ async def sync_user_waybills(
     account_repository: NovaPoshtaAccountRepository,
     waybill_repository: WaybillRepository,
 ) -> SyncResult:
-    """Synchronize all saved Nova Poshta accounts for a Telegram user."""
-    accounts = await account_repository.get_all_accounts(telegram_user_id)
+    """Synchronize the active Nova Poshta account for a Telegram user."""
     total = SyncResult()
-    if not accounts:
+    active_account = await account_repository.get_active_account(telegram_user_id)
+    if active_account is None:
+        logger.warning("Nova Poshta sync skipped for user {}: no active account", telegram_user_id)
         return total
 
-    for account in accounts:
-        try:
-            account_result = await sync_account_waybills(
-                account=account,
-                telegram_user_id=telegram_user_id,
-                waybill_repository=waybill_repository,
-            )
-            total.merge(account_result)
-        except NovaPoshtaError as exc:
-            logger.error(
-                "Nova Poshta sync failed for user {} account {}: {}",
-                telegram_user_id,
-                account.account_name,
-                exc,
-            )
-            total.failed_accounts.append(account.account_name)
-        except Exception as exc:
-            logger.exception(
-                "Unexpected sync failure for user {} account {}: {}",
-                telegram_user_id,
-                account.account_name,
-                exc,
-            )
-            total.failed_accounts.append(account.account_name)
+    logger.info(
+        "Nova Poshta sync using active account {} (id={}) for user {}",
+        active_account.account_name,
+        active_account.id,
+        telegram_user_id,
+    )
+
+    try:
+        account_result = await sync_account_waybills(
+            account=active_account,
+            telegram_user_id=telegram_user_id,
+            waybill_repository=waybill_repository,
+        )
+        total.merge(account_result)
+    except NovaPoshtaError:
+        logger.exception(
+            "Nova Poshta sync failed for user {} account {} (id={}, active={})",
+            telegram_user_id,
+            active_account.account_name,
+            active_account.id,
+            active_account.is_active,
+        )
+        total.failed_accounts.append(active_account.account_name)
+    except Exception:
+        logger.exception(
+            "Unexpected sync failure for user {} account {} (id={}, active={})",
+            telegram_user_id,
+            active_account.account_name,
+            active_account.id,
+            active_account.is_active,
+        )
+        total.failed_accounts.append(active_account.account_name)
 
     return total

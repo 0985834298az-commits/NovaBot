@@ -160,11 +160,12 @@ class NovaPoshtaClient:
                         called_method,
                     )
                 else:
-                    logger.warning(
-                        "Nova Poshta request failed: model={} method={} errors={}",
+                    logger.error(
+                        "Nova Poshta request failed: model={} method={} errors={} response={}",
                         model_name,
                         called_method,
                         data.get("errors"),
+                        json.dumps(data, ensure_ascii=False),
                     )
 
                 return data

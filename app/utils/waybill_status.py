@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.constants import WAYBILL_DELETED_STATUS_CODES
+from app.constants import WAYBILL_DELETED_STATUS_CODES, WAYBILL_LIST_ACTIVE_STATUS_CODES
 
 _STATUS_LABELS: dict[str, str] = {
     "1": "🟡 Створена",
@@ -40,6 +40,11 @@ def normalize_status_code(status_code: str | int | None) -> str:
 def is_deleted_status(status_code: str | int | None) -> bool:
     """Return True when the TTN is deleted and must not count toward COD limits."""
     return normalize_status_code(status_code) in WAYBILL_DELETED_STATUS_CODES
+
+
+def is_list_active_status(status_code: str | int | None) -> bool:
+    """Return True when the TTN should appear in the My Waybills list."""
+    return normalize_status_code(status_code) in WAYBILL_LIST_ACTIVE_STATUS_CODES
 
 
 def is_created_status(status_code: str | int | None) -> bool:

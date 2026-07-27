@@ -91,7 +91,7 @@ async def show_nova_poshta_accounts_list(
                 waybill_repository=waybill_repository,
             )
         except Exception as exc:
-            logger.warning(
+            logger.exception(
                 "Automatic Nova Poshta sync failed for user {}: {}",
                 message.from_user.id,
                 exc,
@@ -547,8 +547,13 @@ async def handle_nova_poshta_account_sync(
         await progress_message.edit_text(MSG_SYNC_FAILED)
         return
 
-    accounts = await account_repository.get_all_accounts(callback.from_user.id)
-    if accounts and len(result.failed_accounts) == len(accounts):
+    active_account = await account_repository.get_active_account(callback.from_user.id)
+    if active_account and active_account.account_name in result.failed_accounts:
+        logger.error(
+            "Manual Nova Poshta sync failed for user {}: active account {} failed",
+            callback.from_user.id,
+            active_account.account_name,
+        )
         await progress_message.edit_text(MSG_SYNC_FAILED)
         return
 

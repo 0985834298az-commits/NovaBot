@@ -26,7 +26,7 @@ METHOD_GET_DOCUMENT_LIST = "getDocumentList"
 METHOD_GET_DOCUMENT = "getDocument"
 
 DOCUMENT_LIST_PAGE_SIZE = "100"
-DOCUMENT_LIST_SYNC_DAYS = 120
+DOCUMENT_LIST_SYNC_DAYS = 90
 
 PRINT_DOCUMENT_URL = (
     "https://my.novaposhta.ua/orders/printDocument/orders[]/{document_ref}/type/pdf/apiKey/{api_key}"
