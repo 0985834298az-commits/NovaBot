@@ -18,6 +18,7 @@ BTN_CREATE_TTN = "📦 Створити ТТН"
 BTN_MY_WAYBILLS = "📋 Мої накладні"
 BTN_RECIPIENTS = "👥 Одержувачі"
 BTN_CARDS = "💳 Картки"
+BTN_NP_ACCOUNTS = "🏢 Акаунти НП"
 BTN_API_KEY = "🔑 API ключ"
 BTN_SETTINGS = "⚙️ Налаштування"
 BTN_REPLACE_API_KEY = "Замінити API ключ"
@@ -28,6 +29,7 @@ MAIN_MENU_BUTTONS = frozenset(
         BTN_MY_WAYBILLS,
         BTN_RECIPIENTS,
         BTN_CARDS,
+        BTN_NP_ACCOUNTS,
         BTN_API_KEY,
         BTN_SETTINGS,
     }
@@ -104,6 +106,35 @@ MSG_CARD_EDIT_NUMBER = "Введіть номер картки:"
 MSG_CARD_UPDATED = "Дані картки оновлено."
 MSG_NO_ACTIVE_PAYMENT_CARD = "Спочатку додайте картку у розділі 💳 Картки."
 
+BTN_NP_ACCOUNT_SELECT = "✅ Обрати"
+BTN_NP_ACCOUNT_RENAME = "✏️ Перейменувати"
+BTN_NP_ACCOUNT_CHANGE_API = "🔑 Змінити API"
+BTN_NP_ACCOUNT_DELETE = "🗑 Видалити"
+BTN_NP_ACCOUNT_ADD = "➕ Додати акаунт"
+BTN_NP_ACCOUNT_DELETE_YES = "✅ Так"
+BTN_NP_ACCOUNT_DELETE_NO = "❌ Ні"
+
+CALLBACK_NP_ACCOUNT_SELECT = "np_account:select"
+CALLBACK_NP_ACCOUNT_RENAME = "np_account:rename"
+CALLBACK_NP_ACCOUNT_CHANGE_API = "np_account:change_api"
+CALLBACK_NP_ACCOUNT_DELETE = "np_account:delete"
+CALLBACK_NP_ACCOUNT_DELETE_YES = "np_account:delete:yes"
+CALLBACK_NP_ACCOUNT_DELETE_NO = "np_account:delete:no"
+CALLBACK_NP_ACCOUNT_ADD = "np_account:add"
+CALLBACK_NP_ACCOUNT_BACK = "np_account:back"
+
+MSG_NP_ACCOUNTS_EMPTY = "Список акаунтів порожній."
+MSG_NP_ACCOUNTS_LIST_HEADER = "Акаунти Нової Пошти:"
+MSG_NP_ASK_ACCOUNT_NAME = "Назва акаунта"
+MSG_NP_ASK_API_KEY = "API Key"
+MSG_NP_ACCOUNT_SAVED = "✅ Акаунт збережено."
+MSG_NP_ACCOUNT_ACTIVE_CHANGED = "✅ Активний акаунт Нової Пошти змінено."
+MSG_NP_ACCOUNT_DELETE_CONFIRM = "Видалити акаунт?"
+MSG_NP_ACCOUNT_DELETED = "Акаунт видалено."
+MSG_NP_ACCOUNT_RENAMED = "Назву акаунта оновлено."
+MSG_NP_ACCOUNT_API_UPDATED = "API ключ акаунта оновлено."
+MSG_NO_ACTIVE_NP_ACCOUNT = "Спочатку додайте акаунт у розділі 🏢 Акаунти НП."
+
 API_KEY_MASK_SUFFIX = "****"
 API_KEY_VISIBLE_CHARS = 8
 
@@ -155,4 +186,4 @@ MSG_TTN_SENDER_NOT_CONFIGURED = (
     "❌ Відправника не налаштовано.\n\n{error}\n\n"
     "Зверніться до адміністратора."
 )
-MSG_TTN_NEED_API_KEY = "Спочатку додайте API ключ Нової Пошти."
+MSG_TTN_NEED_API_KEY = "Спочатку додайте акаунт у розділі 🏢 Акаунти НП."

@@ -5,6 +5,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRepository
 from app.repositories.order_item_repository import OrderItemRepository
 from app.repositories.payment_card_repository import PaymentCardRepository
 from app.repositories.recipient_repository import RecipientRepository
@@ -31,6 +32,7 @@ class DatabaseMiddleware(BaseMiddleware):
             data["payment_card_repository"] = PaymentCardRepository(session)
             data["waybill_repository"] = WaybillRepository(session)
             data["order_item_repository"] = OrderItemRepository(session)
+            data["nova_poshta_account_repository"] = NovaPoshtaAccountRepository(session)
 
             try:
                 result = await handler(event, data)

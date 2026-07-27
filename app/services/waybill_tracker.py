@@ -9,8 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.constants import WAYBILL_CHECK_INTERVAL_SECONDS
 from app.nova_poshta import NovaPoshtaClient
-from app.repositories.user_repository import UserRepository
+from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRepository
 from app.repositories.waybill_repository import WaybillRepository
+from app.services.nova_poshta_account_service import get_active_api_key
 from app.utils.waybill_status import parse_status_documents, should_archive_status
 
 TRACKING_BATCH_SIZE = 100
@@ -26,7 +27,7 @@ async def check_active_waybill_statuses(
     """Poll Nova Poshta and archive waybills that left the Created state."""
     async with session_factory() as session:
         waybill_repository = WaybillRepository(session)
-        user_repository = UserRepository(session)
+        account_repository = NovaPoshtaAccountRepository(session)
         active_waybills = await waybill_repository.get_all_active()
         if not active_waybills:
             return
@@ -38,15 +39,15 @@ async def check_active_waybill_statuses(
         checked_at = datetime.now(UTC)
 
         for telegram_user_id, user_waybills in waybills_by_user.items():
-            user = await user_repository.get_user(telegram_user_id)
-            if user is None or not user.api_key:
+            api_key = await get_active_api_key(account_repository, telegram_user_id)
+            if api_key is None:
                 logger.warning(
-                    "Skipping waybill status check for user {}: API key missing",
+                    "Skipping waybill status check for user {}: active NP account missing",
                     telegram_user_id,
                 )
                 continue
 
-            async with NovaPoshtaClient(user.api_key) as client:
+            async with NovaPoshtaClient(api_key) as client:
                 for batch in _chunk_waybills(user_waybills, TRACKING_BATCH_SIZE):
                     documents = [
                         {

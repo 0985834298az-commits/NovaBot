@@ -131,15 +131,11 @@ async def initialize_sender_cache(api_key: str) -> None:
 
 async def resolve_startup_api_key(
     *,
-    configured_api_key: str | None,
     session_factory: Any,
 ) -> str | None:
-    """Pick an API key for sender cache initialization."""
-    if configured_api_key:
-        return configured_api_key
-
-    from app.repositories.user_repository import UserRepository
+    """Pick an active Nova Poshta API key for sender cache initialization."""
+    from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRepository
 
     async with session_factory() as session:
-        repository = UserRepository(session)
-        return await repository.get_any_api_key()
+        repository = NovaPoshtaAccountRepository(session)
+        return await repository.get_any_active_api_key()

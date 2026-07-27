@@ -19,6 +19,7 @@ from app.database.session import (
 from app.handlers import (
     api_key_router,
     menu_router,
+    nova_poshta_accounts_router,
     payment_cards_router,
     recipients_router,
     start_router,
@@ -50,6 +51,7 @@ def create_dispatcher(
     dispatcher.update.middleware(DatabaseMiddleware(session_factory))
     dispatcher.include_router(start_router)
     dispatcher.include_router(menu_router)
+    dispatcher.include_router(nova_poshta_accounts_router)
     dispatcher.include_router(payment_cards_router)
     dispatcher.include_router(waybills_router)
     dispatcher.include_router(recipients_router)
@@ -71,10 +73,7 @@ async def on_startup(settings: Settings) -> tuple[Bot, Dispatcher]:
     dispatcher["engine"] = engine
     dispatcher["session_factory"] = session_factory
 
-    startup_api_key = await resolve_startup_api_key(
-        configured_api_key=settings.nova_poshta_api_key,
-        session_factory=session_factory,
-    )
+    startup_api_key = await resolve_startup_api_key(session_factory=session_factory)
     if startup_api_key is None:
         await initialize_sender_cache("")
         logger.warning(

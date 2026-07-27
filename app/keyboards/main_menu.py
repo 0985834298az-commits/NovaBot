@@ -6,6 +6,7 @@ from app.constants import (
     BTN_CARDS,
     BTN_CREATE_TTN,
     BTN_MY_WAYBILLS,
+    BTN_NP_ACCOUNTS,
     BTN_RECIPIENTS,
     BTN_SETTINGS,
 )
@@ -23,7 +24,7 @@ def build_main_menu_keyboard() -> ReplyKeyboardMarkup:
         KeyboardButton(text=BTN_CARDS),
     )
     builder.row(
-        KeyboardButton(text=BTN_API_KEY),
+        KeyboardButton(text=BTN_NP_ACCOUNTS),
         KeyboardButton(text=BTN_SETTINGS),
     )
     return builder.as_markup(resize_keyboard=True)

@@ -47,10 +47,10 @@ from app.keyboards import (
 from app.models.recipient import Recipient
 from app.nova_poshta import NovaPoshtaClient
 from app.nova_poshta.exceptions import NovaPoshtaError
+from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRepository
 from app.repositories.order_item_repository import OrderItemRepository
 from app.repositories.payment_card_repository import PaymentCardRepository
 from app.repositories.recipient_repository import RecipientRepository
-from app.repositories.user_repository import UserRepository
 from app.repositories.waybill_repository import WaybillRepository
 from app.services.sender_cache import get_cached_sender_location, is_sender_cache_ready
 from app.services.order_service import create_ttn_with_order_items
@@ -171,7 +171,7 @@ async def handle_recipient_search_query(
 async def handle_recipient_create_ttn(
     callback: CallbackQuery,
     state: FSMContext,
-    user_repository: UserRepository,
+    nova_poshta_account_repository: NovaPoshtaAccountRepository,
     payment_card_repository: PaymentCardRepository,
 ) -> None:
     if callback.data is None or callback.message is None or callback.from_user is None:
@@ -187,8 +187,10 @@ async def handle_recipient_create_ttn(
         await callback.answer("Некоректний одержувач", show_alert=True)
         return
 
-    user = await user_repository.get_user(callback.from_user.id)
-    if user is None or not user.api_key:
+    active_account = await nova_poshta_account_repository.get_active_account(
+        callback.from_user.id,
+    )
+    if active_account is None:
         await callback.answer()
         await callback.message.answer(MSG_TTN_NEED_API_KEY)
         return
@@ -248,7 +250,7 @@ async def handle_recipient_ttn_cod(
 async def handle_recipient_products_input(
     message: Message,
     state: FSMContext,
-    user_repository: UserRepository,
+    nova_poshta_account_repository: NovaPoshtaAccountRepository,
     recipient_repository: RecipientRepository,
     payment_card_repository: PaymentCardRepository,
     waybill_repository: WaybillRepository,
@@ -282,7 +284,7 @@ async def handle_recipient_products_input(
         )
         return
 
-    api_key = await _get_api_key(user_repository, message.from_user.id)
+    api_key = await _get_api_key(nova_poshta_account_repository, message.from_user.id)
     if api_key is None:
         await state.clear()
         await message.answer(
@@ -468,7 +470,7 @@ async def handle_recipient_edit_city(message: Message, state: FSMContext) -> Non
 async def handle_recipient_edit_warehouse(
     message: Message,
     state: FSMContext,
-    user_repository: UserRepository,
+    nova_poshta_account_repository: NovaPoshtaAccountRepository,
     recipient_repository: RecipientRepository,
 ) -> None:
     if message.from_user is None or message.text is None or not message.text.strip():
@@ -488,7 +490,7 @@ async def handle_recipient_edit_warehouse(
         await message.answer(MSG_RECIPIENTS_EMPTY, reply_markup=build_main_menu_keyboard())
         return
 
-    api_key = await _get_api_key(user_repository, message.from_user.id)
+    api_key = await _get_api_key(nova_poshta_account_repository, message.from_user.id)
     if api_key is None:
         await state.clear()
         await message.answer(MSG_TTN_NEED_API_KEY, reply_markup=build_main_menu_keyboard())

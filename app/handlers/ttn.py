@@ -4,7 +4,6 @@ from aiogram.types import Message
 from loguru import logger
 
 from app.constants import (
-    ASK_API_KEY_MESSAGE,
     MSG_NO_ACTIVE_PAYMENT_CARD,
     MSG_TTN_ASK_ORDER,
     MSG_TTN_ASK_PRODUCTS,
@@ -16,15 +15,16 @@ from app.constants import (
     MSG_TTN_PRINT_LINK,
     MSG_TTN_SENDER_NOT_CONFIGURED,
 )
-from app.handlers.states import TtnWizard, WaitingForApiKey
+from app.handlers.states import TtnWizard
 from app.keyboards import build_main_menu_keyboard
 from app.nova_poshta import NovaPoshtaClient
 from app.nova_poshta.exceptions import NovaPoshtaError
+from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRepository
 from app.repositories.order_item_repository import OrderItemRepository
 from app.repositories.payment_card_repository import PaymentCardRepository
 from app.repositories.recipient_repository import RecipientRepository
-from app.repositories.user_repository import UserRepository
 from app.repositories.waybill_repository import WaybillRepository
+from app.services.nova_poshta_account_service import get_active_api_key
 from app.services.order_service import create_ttn_with_order_items
 from app.services.sender_cache import (
     get_cached_sender_location,
@@ -44,13 +44,10 @@ router = Router(name="ttn")
 
 
 async def _get_api_key(
-    user_repository: UserRepository,
+    account_repository: NovaPoshtaAccountRepository,
     telegram_id: int,
 ) -> str | None:
-    user = await user_repository.get_user(telegram_id)
-    if user is None or not user.api_key:
-        return None
-    return user.api_key
+    return await get_active_api_key(account_repository, telegram_id)
 
 
 def _sender_not_configured_message() -> str:
@@ -61,7 +58,7 @@ def _sender_not_configured_message() -> str:
 async def begin_ttn_wizard(
     message: Message,
     state: FSMContext,
-    user_repository: UserRepository,
+    nova_poshta_account_repository: NovaPoshtaAccountRepository,
     payment_card_repository: PaymentCardRepository,
 ) -> None:
     """Start single-message TTN creation."""
@@ -80,10 +77,12 @@ async def begin_ttn_wizard(
         )
         return
 
-    user = await user_repository.get_user(message.from_user.id)
-    if user is None or not user.api_key:
-        await state.set_state(WaitingForApiKey.api_key)
-        await message.answer(ASK_API_KEY_MESSAGE)
+    user = await nova_poshta_account_repository.get_active_account(message.from_user.id)
+    if user is None:
+        await message.answer(
+            MSG_TTN_NEED_API_KEY,
+            reply_markup=build_main_menu_keyboard(),
+        )
         return
 
     await state.clear()
@@ -120,7 +119,7 @@ async def handle_ttn_order_input(
 async def handle_ttn_products_input(
     message: Message,
     state: FSMContext,
-    user_repository: UserRepository,
+    nova_poshta_account_repository: NovaPoshtaAccountRepository,
     recipient_repository: RecipientRepository,
     payment_card_repository: PaymentCardRepository,
     waybill_repository: WaybillRepository,
@@ -143,7 +142,7 @@ async def handle_ttn_products_input(
         )
         return
 
-    api_key = await _get_api_key(user_repository, message.from_user.id)
+    api_key = await _get_api_key(nova_poshta_account_repository, message.from_user.id)
     if api_key is None:
         await state.clear()
         await message.answer(

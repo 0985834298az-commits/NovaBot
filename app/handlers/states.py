@@ -32,6 +32,15 @@ class WaybillWizard(StatesGroup):
     edit_products = State()
 
 
+class NovaPoshtaAccountWizard(StatesGroup):
+    """Nova Poshta account management flows."""
+
+    add_name = State()
+    add_api_key = State()
+    edit_name = State()
+    edit_api_key = State()
+
+
 class PaymentCardWizard(StatesGroup):
     """Payment card management flows."""
 
