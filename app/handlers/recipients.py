@@ -21,13 +21,14 @@ from app.constants import (
     MSG_RECIPIENTS_SEARCH_EMPTY,
     MSG_RECIPIENTS_SEARCH_PROMPT,
     MSG_RECIPIENTS_TRUNCATED,
+    MSG_NO_ACTIVE_NP_ACCOUNT,
     MSG_NO_ACTIVE_PAYMENT_CARD,
     MSG_TTN_ASK_PRODUCTS,
     MSG_TTN_CREATE_FAILED,
     MSG_TTN_CREATING,
     MSG_TTN_INVALID_PRODUCTS,
-    MSG_TTN_NEED_API_KEY,
     MSG_TTN_PRINT_LINK,
+    MSG_TTN_SENDER_NOT_CONFIGURED,
     RECIPIENT_SEARCH_THRESHOLD,
     CALLBACK_RECIPIENT_DELETE,
     CALLBACK_RECIPIENT_DELETE_NO,
@@ -37,7 +38,6 @@ from app.constants import (
     CALLBACK_RECIPIENT_TTN,
 )
 from app.handlers.states import RecipientWizard
-from app.handlers.ttn import _get_api_key, _sender_not_configured_message
 from app.keyboards import (
     build_main_menu_keyboard,
     build_recipient_actions_keyboard,
@@ -52,8 +52,12 @@ from app.repositories.order_item_repository import OrderItemRepository
 from app.repositories.payment_card_repository import PaymentCardRepository
 from app.repositories.recipient_repository import RecipientRepository
 from app.repositories.waybill_repository import WaybillRepository
-from app.services.sender_cache import get_cached_sender_location, is_sender_cache_ready
+from app.services.nova_poshta_account_service import (
+    ensure_active_account_sender_cache,
+    get_active_api_key,
+)
 from app.services.order_service import create_ttn_with_order_items
+from app.services.sender_cache import get_sender_cache_error
 from app.services.ttn_service import (
     build_print_link,
     build_wizard_data_from_saved_recipient,
@@ -67,6 +71,14 @@ from app.services.ttn_service import (
 from app.utils.order_items import parse_product_lines
 
 router = Router(name="recipients")
+
+
+def _sender_not_configured_message(telegram_user_id: int) -> str:
+    error = (
+        get_sender_cache_error(telegram_user_id)
+        or "Sender location is not configured"
+    )
+    return MSG_TTN_SENDER_NOT_CONFIGURED.format(error=error)
 
 
 def _parse_recipient_id(callback_data: str, prefix: str) -> int | None:
@@ -177,28 +189,32 @@ async def handle_recipient_create_ttn(
     if callback.data is None or callback.message is None or callback.from_user is None:
         return
 
-    if not is_sender_cache_ready():
+    active_card = await payment_card_repository.get_active_card(callback.from_user.id)
+    if active_card is None:
         await callback.answer()
-        await callback.message.answer(_sender_not_configured_message())
+        await callback.message.answer(MSG_NO_ACTIVE_PAYMENT_CARD)
+        return
+
+    try:
+        prepared = await ensure_active_account_sender_cache(
+            nova_poshta_account_repository,
+            callback.from_user.id,
+        )
+    except RuntimeError:
+        await callback.answer()
+        await callback.message.answer(
+            _sender_not_configured_message(callback.from_user.id),
+        )
+        return
+
+    if prepared is None:
+        await callback.answer()
+        await callback.message.answer(MSG_NO_ACTIVE_NP_ACCOUNT)
         return
 
     recipient_id = _parse_recipient_id(callback.data, CALLBACK_RECIPIENT_TTN)
     if recipient_id is None:
         await callback.answer("Некоректний одержувач", show_alert=True)
-        return
-
-    active_account = await nova_poshta_account_repository.get_active_account(
-        callback.from_user.id,
-    )
-    if active_account is None:
-        await callback.answer()
-        await callback.message.answer(MSG_TTN_NEED_API_KEY)
-        return
-
-    active_card = await payment_card_repository.get_active_card(callback.from_user.id)
-    if active_card is None:
-        await callback.answer()
-        await callback.message.answer(MSG_NO_ACTIVE_PAYMENT_CARD)
         return
 
     await state.clear()
@@ -284,14 +300,28 @@ async def handle_recipient_products_input(
         )
         return
 
-    api_key = await _get_api_key(nova_poshta_account_repository, message.from_user.id)
-    if api_key is None:
+    try:
+        prepared = await ensure_active_account_sender_cache(
+            nova_poshta_account_repository,
+            message.from_user.id,
+        )
+    except RuntimeError:
         await state.clear()
         await message.answer(
-            MSG_TTN_NEED_API_KEY,
+            _sender_not_configured_message(message.from_user.id),
             reply_markup=build_main_menu_keyboard(),
         )
         return
+
+    if prepared is None:
+        await state.clear()
+        await message.answer(
+            MSG_NO_ACTIVE_NP_ACCOUNT,
+            reply_markup=build_main_menu_keyboard(),
+        )
+        return
+
+    api_key, sender_location = prepared
 
     active_card = await payment_card_repository.get_active_card(message.from_user.id)
     if active_card is None:
@@ -305,7 +335,6 @@ async def handle_recipient_products_input(
     await message.answer(MSG_TTN_CREATING)
 
     try:
-        sender_location = get_cached_sender_location()
         wizard_data = build_wizard_data_from_saved_recipient(
             recipient,
             str(cod_amount),
@@ -490,10 +519,13 @@ async def handle_recipient_edit_warehouse(
         await message.answer(MSG_RECIPIENTS_EMPTY, reply_markup=build_main_menu_keyboard())
         return
 
-    api_key = await _get_api_key(nova_poshta_account_repository, message.from_user.id)
+    api_key = await get_active_api_key(nova_poshta_account_repository, message.from_user.id)
     if api_key is None:
         await state.clear()
-        await message.answer(MSG_TTN_NEED_API_KEY, reply_markup=build_main_menu_keyboard())
+        await message.answer(
+            MSG_NO_ACTIVE_NP_ACCOUNT,
+            reply_markup=build_main_menu_keyboard(),
+        )
         return
 
     city_query = str(data.get("city_query") or existing.city_name)

@@ -63,18 +63,6 @@ class NovaPoshtaAccountRepository:
         )
         return result.scalar_one_or_none()
 
-    async def get_any_active_api_key(self) -> str | None:
-        """Return any active Nova Poshta API key."""
-        result = await self._session.execute(
-            select(NovaPoshtaAccount.api_key)
-            .where(NovaPoshtaAccount.is_active.is_(True))
-            .limit(1),
-        )
-        api_key = result.scalar_one_or_none()
-        if api_key is None:
-            return None
-        return str(api_key).strip() or None
-
     async def set_active_account(
         self,
         account_id: int,

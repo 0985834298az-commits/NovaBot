@@ -41,6 +41,7 @@ from app.models.nova_poshta_account import NovaPoshtaAccount
 from app.nova_poshta import NovaPoshtaClient
 from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRepository
 from app.services.nova_poshta_account_service import format_nova_poshta_account
+from app.services.sender_cache import ensure_sender_cache, invalidate_sender_cache
 
 router = Router(name="np_accounts")
 
@@ -181,6 +182,8 @@ async def handle_nova_poshta_account_add_api_key(
         api_key=api_key,
     )
 
+    await ensure_sender_cache(message.from_user.id, api_key)
+
     await state.clear()
     await message.answer(MSG_NP_ACCOUNT_SAVED)
     await show_nova_poshta_accounts_list(message, account_repository)
@@ -231,6 +234,7 @@ async def handle_nova_poshta_account_activate(
         return
 
     await callback.message.answer(MSG_NP_ACCOUNT_ACTIVE_CHANGED)
+    await ensure_sender_cache(callback.from_user.id, account.api_key)
     await show_nova_poshta_account_detail(
         callback.message,
         account_repository,
@@ -290,6 +294,11 @@ async def handle_nova_poshta_account_delete_confirm(
     if not deleted:
         await callback.message.answer(MSG_NP_ACCOUNTS_EMPTY)
         return
+
+    invalidate_sender_cache(callback.from_user.id)
+    active_account = await account_repository.get_active_account(callback.from_user.id)
+    if active_account is not None:
+        await ensure_sender_cache(callback.from_user.id, active_account.api_key)
 
     await callback.message.answer(MSG_NP_ACCOUNT_DELETED)
     await show_nova_poshta_accounts_list(callback.message, account_repository)
@@ -430,6 +439,9 @@ async def handle_nova_poshta_account_change_api_save(
     if updated is None:
         await message.answer(MSG_NP_ACCOUNTS_EMPTY, reply_markup=build_main_menu_keyboard())
         return
+
+    invalidate_sender_cache(message.from_user.id)
+    await ensure_sender_cache(message.from_user.id, api_key)
 
     await message.answer(MSG_NP_ACCOUNT_API_UPDATED)
     await show_nova_poshta_account_detail(

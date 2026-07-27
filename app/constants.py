@@ -17,7 +17,15 @@ BTN_MY_WAYBILLS = "📋 Мої накладні"
 BTN_RECIPIENTS = "👥 Одержувачі"
 BTN_CARDS = "💳 Картки"
 BTN_NP_ACCOUNTS = "🏢 Акаунти НП"
+BTN_NP_ACCOUNTS_LEGACY = "🔑 API ключ"
 BTN_SETTINGS = "⚙️ Налаштування"
+
+NP_ACCOUNTS_MENU_BUTTONS = frozenset(
+    {
+        BTN_NP_ACCOUNTS,
+        BTN_NP_ACCOUNTS_LEGACY,
+    }
+)
 
 MAIN_MENU_BUTTONS = frozenset(
     {
@@ -132,7 +140,7 @@ MSG_NP_ACCOUNT_DELETE_CONFIRM = "Видалити акаунт НП?"
 MSG_NP_ACCOUNT_DELETED = "Акаунт НП видалено."
 MSG_NP_ACCOUNT_RENAMED = "Назву акаунта НП оновлено."
 MSG_NP_ACCOUNT_API_UPDATED = "API ключ акаунта НП оновлено."
-MSG_NO_ACTIVE_NP_ACCOUNT = "Спочатку додайте акаунт у розділі 🏢 Акаунти НП."
+MSG_NO_ACTIVE_NP_ACCOUNT = "❌ Не налаштовано жодного акаунта Нової Пошти."
 
 API_KEY_MASK_SUFFIX = "****"
 API_KEY_VISIBLE_CHARS = 8
@@ -185,4 +193,3 @@ MSG_TTN_SENDER_NOT_CONFIGURED = (
     "❌ Відправника не налаштовано.\n\n{error}\n\n"
     "Зверніться до адміністратора."
 )
-MSG_TTN_NEED_API_KEY = "Спочатку додайте акаунт у розділі 🏢 Акаунти НП."

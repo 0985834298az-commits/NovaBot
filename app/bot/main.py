@@ -25,7 +25,6 @@ from app.handlers import (
     ttn_router,
     waybills_router,
 )
-from app.services.sender_cache import initialize_sender_cache, resolve_startup_api_key
 from app.services.waybill_tracker import run_waybill_status_checker
 
 
@@ -70,15 +69,6 @@ async def on_startup(settings: Settings) -> tuple[Bot, Dispatcher]:
 
     dispatcher["engine"] = engine
     dispatcher["session_factory"] = session_factory
-
-    startup_api_key = await resolve_startup_api_key(session_factory=session_factory)
-    if startup_api_key is None:
-        await initialize_sender_cache("")
-        logger.warning(
-            "Sender cache was not initialized: no Nova Poshta API key available at startup",
-        )
-    else:
-        await initialize_sender_cache(startup_api_key)
 
     dispatcher["waybill_tracker_task"] = asyncio.create_task(
         run_waybill_status_checker(session_factory),

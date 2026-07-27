@@ -10,6 +10,7 @@ from app.constants import (
     BTN_RECIPIENTS,
     BTN_SETTINGS,
     MSG_SETTINGS_SOON,
+    NP_ACCOUNTS_MENU_BUTTONS,
 )
 from app.handlers.nova_poshta_accounts import begin_nova_poshta_accounts_list
 from app.handlers.payment_cards import begin_payment_cards_list
@@ -75,7 +76,7 @@ async def handle_payment_cards(
     await begin_payment_cards_list(message, state, payment_card_repository)
 
 
-@router.message(F.text == BTN_NP_ACCOUNTS)
+@router.message(F.text.in_(NP_ACCOUNTS_MENU_BUTTONS))
 async def handle_nova_poshta_accounts(
     message: Message,
     state: FSMContext,
@@ -83,6 +84,10 @@ async def handle_nova_poshta_accounts(
 ) -> None:
     """Show saved Nova Poshta accounts."""
     await state.clear()
+    await message.answer(
+        BTN_NP_ACCOUNTS,
+        reply_markup=build_main_menu_keyboard(),
+    )
     await begin_nova_poshta_accounts_list(
         message,
         state,

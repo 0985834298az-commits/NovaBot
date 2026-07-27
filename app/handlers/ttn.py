@@ -4,6 +4,7 @@ from aiogram.types import Message
 from loguru import logger
 
 from app.constants import (
+    MSG_NO_ACTIVE_NP_ACCOUNT,
     MSG_NO_ACTIVE_PAYMENT_CARD,
     MSG_TTN_ASK_ORDER,
     MSG_TTN_ASK_PRODUCTS,
@@ -11,7 +12,6 @@ from app.constants import (
     MSG_TTN_CREATING,
     MSG_TTN_INVALID_ORDER_FORMAT,
     MSG_TTN_INVALID_PRODUCTS,
-    MSG_TTN_NEED_API_KEY,
     MSG_TTN_PRINT_LINK,
     MSG_TTN_SENDER_NOT_CONFIGURED,
 )
@@ -24,13 +24,9 @@ from app.repositories.order_item_repository import OrderItemRepository
 from app.repositories.payment_card_repository import PaymentCardRepository
 from app.repositories.recipient_repository import RecipientRepository
 from app.repositories.waybill_repository import WaybillRepository
-from app.services.nova_poshta_account_service import get_active_api_key
+from app.services.nova_poshta_account_service import ensure_active_account_sender_cache
 from app.services.order_service import create_ttn_with_order_items
-from app.services.sender_cache import (
-    get_cached_sender_location,
-    get_sender_cache_error,
-    is_sender_cache_ready,
-)
+from app.services.sender_cache import get_sender_cache_error
 from app.services.ttn_service import (
     TtnOrderInput,
     build_print_link,
@@ -43,15 +39,11 @@ from app.utils.order_items import parse_product_lines
 router = Router(name="ttn")
 
 
-async def _get_api_key(
-    account_repository: NovaPoshtaAccountRepository,
-    telegram_id: int,
-) -> str | None:
-    return await get_active_api_key(account_repository, telegram_id)
-
-
-def _sender_not_configured_message() -> str:
-    error = get_sender_cache_error() or "Sender location is not configured"
+def _sender_not_configured_message(telegram_user_id: int) -> str:
+    error = (
+        get_sender_cache_error(telegram_user_id)
+        or "Sender location is not configured"
+    )
     return MSG_TTN_SENDER_NOT_CONFIGURED.format(error=error)
 
 
@@ -65,10 +57,6 @@ async def begin_ttn_wizard(
     if message.from_user is None:
         return
 
-    if not is_sender_cache_ready():
-        await message.answer(_sender_not_configured_message())
-        return
-
     active_card = await payment_card_repository.get_active_card(message.from_user.id)
     if active_card is None:
         await message.answer(
@@ -77,10 +65,26 @@ async def begin_ttn_wizard(
         )
         return
 
-    user = await nova_poshta_account_repository.get_active_account(message.from_user.id)
-    if user is None:
+    try:
+        prepared = await ensure_active_account_sender_cache(
+            nova_poshta_account_repository,
+            message.from_user.id,
+        )
+    except RuntimeError as exc:
         await message.answer(
-            MSG_TTN_NEED_API_KEY,
+            _sender_not_configured_message(message.from_user.id),
+            reply_markup=build_main_menu_keyboard(),
+        )
+        logger.error(
+            "TTN wizard blocked for user {}: {}",
+            message.from_user.id,
+            exc,
+        )
+        return
+
+    if prepared is None:
+        await message.answer(
+            MSG_NO_ACTIVE_NP_ACCOUNT,
             reply_markup=build_main_menu_keyboard(),
         )
         return
@@ -134,23 +138,6 @@ async def handle_ttn_products_input(
         await message.answer(MSG_TTN_INVALID_PRODUCTS)
         return
 
-    if not is_sender_cache_ready():
-        await state.clear()
-        await message.answer(
-            _sender_not_configured_message(),
-            reply_markup=build_main_menu_keyboard(),
-        )
-        return
-
-    api_key = await _get_api_key(nova_poshta_account_repository, message.from_user.id)
-    if api_key is None:
-        await state.clear()
-        await message.answer(
-            MSG_TTN_NEED_API_KEY,
-            reply_markup=build_main_menu_keyboard(),
-        )
-        return
-
     active_card = await payment_card_repository.get_active_card(message.from_user.id)
     if active_card is None:
         await state.clear()
@@ -159,6 +146,34 @@ async def handle_ttn_products_input(
             reply_markup=build_main_menu_keyboard(),
         )
         return
+
+    try:
+        prepared = await ensure_active_account_sender_cache(
+            nova_poshta_account_repository,
+            message.from_user.id,
+        )
+    except RuntimeError as exc:
+        await state.clear()
+        await message.answer(
+            _sender_not_configured_message(message.from_user.id),
+            reply_markup=build_main_menu_keyboard(),
+        )
+        logger.error(
+            "TTN creation blocked for user {}: {}",
+            message.from_user.id,
+            exc,
+        )
+        return
+
+    if prepared is None:
+        await state.clear()
+        await message.answer(
+            MSG_NO_ACTIVE_NP_ACCOUNT,
+            reply_markup=build_main_menu_keyboard(),
+        )
+        return
+
+    api_key, sender_location = prepared
 
     data = await state.get_data()
     order = TtnOrderInput(
@@ -172,7 +187,6 @@ async def handle_ttn_products_input(
     await message.answer(MSG_TTN_CREATING)
 
     try:
-        sender_location = get_cached_sender_location()
         async with NovaPoshtaClient(api_key) as client:
             wizard_data, sender_profile = await prepare_wizard_data_from_order(
                 client,

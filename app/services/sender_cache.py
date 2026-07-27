@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from loguru import logger
 
@@ -23,12 +22,13 @@ from app.services.ttn_service import (
 class CachedSenderLocation:
     """Resolved sender city and warehouse refs."""
 
+    api_key: str
     sender_city: dict[str, str]
     sender_warehouse: dict[str, str]
 
 
-_location: CachedSenderLocation | None = None
-_error: str | None = None
+_user_locations: dict[int, CachedSenderLocation] = {}
+_user_errors: dict[int, str] = {}
 
 
 def find_sender_settlement(
@@ -51,37 +51,60 @@ def find_sender_settlement(
     return None
 
 
-def is_sender_cache_ready() -> bool:
-    """Return True when sender refs were resolved at startup."""
-    return _location is not None
+def invalidate_sender_cache(telegram_user_id: int) -> None:
+    """Drop cached sender refs for a Telegram user."""
+    _user_locations.pop(telegram_user_id, None)
+    _user_errors.pop(telegram_user_id, None)
 
 
-def get_sender_cache_error() -> str | None:
-    """Return the sender cache initialization error, if any."""
-    return _error
+def is_sender_cache_ready(telegram_user_id: int) -> bool:
+    """Return True when sender refs were resolved for the user."""
+    return telegram_user_id in _user_locations
 
 
-def get_cached_sender_location() -> dict[str, dict[str, str]]:
-    """Return cached sender city and warehouse data."""
-    if _location is None:
-        msg = _error or "Sender location is not configured"
+def get_sender_cache_error(telegram_user_id: int) -> str | None:
+    """Return sender cache initialization error for the user, if any."""
+    return _user_errors.get(telegram_user_id)
+
+
+def get_cached_sender_location(telegram_user_id: int) -> dict[str, dict[str, str]]:
+    """Return cached sender city and warehouse data for the user."""
+    location = _user_locations.get(telegram_user_id)
+    if location is None:
+        msg = _user_errors.get(telegram_user_id) or "Sender location is not configured"
         raise NovaPoshtaApiError(msg)
 
     return {
-        "sender_city": _location.sender_city,
-        "sender_warehouse": _location.sender_warehouse,
+        "sender_city": location.sender_city,
+        "sender_warehouse": location.sender_warehouse,
     }
 
 
-async def initialize_sender_cache(api_key: str) -> None:
-    """Resolve and cache default sender city and warehouse refs."""
-    global _location, _error
+async def ensure_sender_cache(telegram_user_id: int, api_key: str) -> bool:
+    """Resolve sender refs for the user's active Nova Poshta account."""
+    normalized_key = api_key.strip()
+    if not normalized_key:
+        invalidate_sender_cache(telegram_user_id)
+        _user_errors[telegram_user_id] = (
+            "Nova Poshta API key is not available for sender cache initialization"
+        )
+        logger.error(
+            "Sender cache for user {} was not initialized: empty API key",
+            telegram_user_id,
+        )
+        return False
 
-    if not api_key.strip():
-        _location = None
-        _error = "Nova Poshta API key is not available for sender cache initialization"
-        logger.error(_error)
-        return
+    cached = _user_locations.get(telegram_user_id)
+    if cached is not None and cached.api_key == normalized_key:
+        return True
+
+    await _initialize_sender_cache(telegram_user_id, normalized_key)
+    return telegram_user_id in _user_locations
+
+
+async def _initialize_sender_cache(telegram_user_id: int, api_key: str) -> None:
+    """Resolve and cache default sender city and warehouse refs."""
+    invalidate_sender_cache(telegram_user_id)
 
     try:
         async with NovaPoshtaClient(api_key) as client:
@@ -108,34 +131,28 @@ async def initialize_sender_cache(api_key: str) -> None:
                 msg = f"Sender warehouse №{SENDER_WAREHOUSE_NUMBER} was not found"
                 raise NovaPoshtaApiError(msg)
 
-        _location = CachedSenderLocation(
+        _user_locations[telegram_user_id] = CachedSenderLocation(
+            api_key=api_key,
             sender_city={"delivery_city": sender_city["delivery_city"]},
             sender_warehouse=sender_warehouse,
         )
-        _error = None
         logger.info(
-            "Sender cache initialized: city_ref={} warehouse_ref={} warehouse_number={}",
+            "Sender cache initialized for user {}: city_ref={} warehouse_ref={} warehouse_number={}",
+            telegram_user_id,
             sender_city["delivery_city"],
             sender_warehouse["ref"],
             sender_warehouse["number"],
         )
     except NovaPoshtaError as exc:
-        _location = None
-        _error = str(exc)
-        logger.error("Failed to initialize sender cache: {}", exc)
+        _user_errors[telegram_user_id] = str(exc)
+        logger.error(
+            "Failed to initialize sender cache for user {}: {}",
+            telegram_user_id,
+            exc,
+        )
     except Exception as exc:
-        _location = None
-        _error = str(exc)
-        logger.exception("Unexpected error while initializing sender cache")
-
-
-async def resolve_startup_api_key(
-    *,
-    session_factory: Any,
-) -> str | None:
-    """Pick an active Nova Poshta API key for sender cache initialization."""
-    from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRepository
-
-    async with session_factory() as session:
-        repository = NovaPoshtaAccountRepository(session)
-        return await repository.get_any_active_api_key()
+        _user_errors[telegram_user_id] = str(exc)
+        logger.exception(
+            "Unexpected error while initializing sender cache for user {}",
+            telegram_user_id,
+        )
