@@ -3,7 +3,6 @@ from __future__ import annotations
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
-from loguru import logger
 
 from app.constants import (
     MSG_RECIPIENT_DELETED,
@@ -25,9 +24,7 @@ from app.constants import (
     MSG_NO_ACTIVE_PAYMENT_CARD,
     MSG_TTN_ASK_PRODUCTS,
     MSG_TTN_CREATE_FAILED,
-    MSG_TTN_CREATING,
     MSG_TTN_INVALID_PRODUCTS,
-    MSG_TTN_PRINT_LINK,
     MSG_TTN_SENDER_NOT_CONFIGURED,
     RECIPIENT_SEARCH_THRESHOLD,
     CALLBACK_RECIPIENT_DELETE,
@@ -51,19 +48,16 @@ from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRep
 from app.repositories.order_item_repository import OrderItemRepository
 from app.repositories.payment_card_repository import PaymentCardRepository
 from app.repositories.recipient_repository import RecipientRepository
+from app.repositories.user_repository import UserRepository
 from app.repositories.waybill_repository import WaybillRepository
 from app.services.nova_poshta_account_service import (
     ensure_active_account_sender_cache,
     get_active_api_key,
 )
-from app.services.order_service import create_ttn_with_order_items
 from app.services.sender_cache import get_sender_cache_error
+from app.services.ttn_creation_flow import process_ttn_account_selection
 from app.services.ttn_service import (
-    build_print_link,
-    build_wizard_data_from_saved_recipient,
-    fetch_sender_profile,
     format_recipient_card,
-    format_ttn_success_message,
     normalize_phone,
     parse_declared_cost,
     resolve_recipient_city_and_warehouse,
@@ -271,6 +265,7 @@ async def handle_recipient_products_input(
     payment_card_repository: PaymentCardRepository,
     waybill_repository: WaybillRepository,
     order_item_repository: OrderItemRepository,
+    user_repository: UserRepository,
 ) -> None:
     if message.from_user is None or message.text is None:
         return
@@ -300,85 +295,20 @@ async def handle_recipient_products_input(
         )
         return
 
-    try:
-        prepared = await ensure_active_account_sender_cache(
-            nova_poshta_account_repository,
-            message.from_user.id,
-        )
-    except RuntimeError:
-        await state.clear()
-        await message.answer(
-            _sender_not_configured_message(message.from_user.id),
-            reply_markup=build_main_menu_keyboard(),
-        )
-        return
-
-    if prepared is None:
-        await state.clear()
-        await message.answer(
-            MSG_NO_ACTIVE_NP_ACCOUNT,
-            reply_markup=build_main_menu_keyboard(),
-        )
-        return
-
-    api_key, sender_location = prepared
-
-    active_card = await payment_card_repository.get_active_card(message.from_user.id)
-    if active_card is None:
-        await state.clear()
-        await message.answer(
-            MSG_NO_ACTIVE_PAYMENT_CARD,
-            reply_markup=build_main_menu_keyboard(),
-        )
-        return
-
-    await message.answer(MSG_TTN_CREATING)
-
-    try:
-        wizard_data = build_wizard_data_from_saved_recipient(
-            recipient,
-            str(cod_amount),
-            sender_location,
-        )
-        wizard_data["payment_card_number"] = active_card.card_number
-        async with NovaPoshtaClient(api_key) as client:
-            sender_profile = await fetch_sender_profile(client)
-        document, _waybill = await create_ttn_with_order_items(
-            telegram_user_id=message.from_user.id,
-            wizard_data=wizard_data,
-            sender_profile=sender_profile,
-            product_names=product_names,
-            api_key=api_key,
-            recipient_repository=recipient_repository,
-            waybill_repository=waybill_repository,
-            order_item_repository=order_item_repository,
-            save_recipient=False,
-        )
-    except NovaPoshtaError as exc:
-        logger.error(
-            "TTN creation from recipient failed for user {}: {}",
-            message.from_user.id,
-            exc,
-        )
-        await message.answer(MSG_TTN_CREATE_FAILED.format(error=str(exc)))
-        return
-
-    ttn_number = str(document.get("IntDocNumber") or "—")
-    reference = str(document.get("Ref") or "")
-    delivery_cost = document.get("CostOnSite") or document.get("DocumentCost")
-
-    await state.clear()
-    await message.answer(
-        format_ttn_success_message(
-            ttn_number=ttn_number,
-            delivery_cost=delivery_cost,
-        ),
-        reply_markup=build_main_menu_keyboard(),
+    await process_ttn_account_selection(
+        message,
+        state,
+        source="recipient",
+        product_names=product_names,
+        cod_amount=str(cod_amount),
+        nova_poshta_account_repository=nova_poshta_account_repository,
+        waybill_repository=waybill_repository,
+        user_repository=user_repository,
+        recipient_repository=recipient_repository,
+        payment_card_repository=payment_card_repository,
+        order_item_repository=order_item_repository,
+        recipient_id=int(recipient_id),
     )
-
-    if reference:
-        print_link = build_print_link(reference, api_key)
-        await message.answer(MSG_TTN_PRINT_LINK.format(link=print_link))
 
 
 @router.callback_query(F.data.startswith(f"{CALLBACK_RECIPIENT_DELETE_YES}:"))

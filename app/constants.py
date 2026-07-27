@@ -59,7 +59,51 @@ MSG_RECIPIENT_EDIT_CITY = "Введіть нове місто:"
 MSG_RECIPIENT_EDIT_WAREHOUSE = "Введіть новий номер відділення:"
 MSG_RECIPIENT_INVALID_PHONE = "Невірний формат телефону. Приклад: 0671234567"
 MSG_RECIPIENT_INVALID_COD = "Невірна сума накладеного платежу. Введіть число більше 0."
-MSG_SETTINGS_SOON = "Налаштування скоро будуть доступні."
+
+DEFAULT_MONTHLY_COD_LIMIT = 30_000
+
+MSG_SETTINGS_HEADER = "⚙️ Налаштування"
+MSG_SETTINGS_AUTO_SWITCH = "Automatic account switching"
+MSG_SETTINGS_AUTO_SWITCH_ON = "🟢 ON"
+MSG_SETTINGS_AUTO_SWITCH_OFF = "⚪ OFF"
+BTN_SETTINGS_TOGGLE_AUTO_SWITCH = "🔄 Automatic account switching"
+
+CALLBACK_SETTINGS_TOGGLE_AUTO_SWITCH = "settings:toggle_auto_switch"
+
+BTN_ACCOUNT_SEL_CREATE_ANYWAY = "⚠️ Create anyway on current account"
+BTN_ACCOUNT_SEL_SELECT = "🔑 Select another account"
+BTN_ACCOUNT_SEL_CANCEL = "❌ Cancel"
+
+CALLBACK_ACCOUNT_SEL_CREATE_ANYWAY = "account_sel:create_anyway"
+CALLBACK_ACCOUNT_SEL_SELECT = "account_sel:select"
+CALLBACK_ACCOUNT_SEL_CANCEL = "account_sel:cancel"
+CALLBACK_ACCOUNT_SEL_PICK = "account_sel:pick"
+
+MSG_ACCOUNT_AUTO_SWITCHED = (
+    "🔄 Active account changed automatically.\n\n"
+    "Previous:\n"
+    "{previous_name}\n\n"
+    "Current:\n"
+    "{current_name}\n\n"
+    "Reason:\n\n"
+    "Current account would exceed monthly limit."
+)
+MSG_ACCOUNT_LIMIT_EXCEEDED = (
+    "❌ No Nova Poshta account has enough remaining monthly limit.\n\n"
+    "Required:\n"
+    "{required}\n\n"
+    "Available:\n\n"
+    "{available}"
+)
+MSG_ACCOUNT_LIMIT_WARNING = (
+    "⚠️ Current account would exceed monthly limit.\n\n"
+    "Required:\n"
+    "{required}\n\n"
+    "Available:\n\n"
+    "{available}"
+)
+MSG_ACCOUNT_SELECT_HEADER = "Select a Nova Poshta account:"
+MSG_ACCOUNT_SELECTED_ACTIVE = "✅ Active account: {account_name}"
 
 BTN_RECIPIENT_CREATE_TTN = "📦 Створити ТТН"
 BTN_RECIPIENT_EDIT = "✏️ Редагувати"

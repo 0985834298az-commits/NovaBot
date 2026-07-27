@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +31,7 @@ class WaybillRepository:
         cargo_description: str,
         weight: str,
         declared_cost: str,
+        nova_poshta_account_id: int | None = None,
         shipment_status: str = WAYBILL_INITIAL_STATUS,
         shipment_status_code: str = WAYBILL_INITIAL_STATUS_CODE,
     ) -> Waybill:
@@ -49,6 +51,7 @@ class WaybillRepository:
             cargo_description=cargo_description.strip(),
             weight=weight.strip(),
             declared_cost=declared_cost.strip(),
+            nova_poshta_account_id=nova_poshta_account_id,
             shipment_status=shipment_status.strip(),
             shipment_status_code=shipment_status_code.strip(),
             is_archived=False,
@@ -78,6 +81,27 @@ class WaybillRepository:
             .order_by(Waybill.telegram_user_id.asc(), Waybill.created_at.asc()),
         )
         return list(result.scalars().all())
+
+    async def get_current_month_cod_total(self, nova_poshta_account_id: int) -> Decimal:
+        """Return total COD amount for an account in the current calendar month."""
+        now = datetime.now().astimezone()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        result = await self._session.execute(
+            select(Waybill.cod_amount).where(
+                Waybill.nova_poshta_account_id == nova_poshta_account_id,
+                Waybill.created_at >= month_start,
+            ),
+        )
+        total = Decimal(0)
+        for (raw_amount,) in result.all():
+            if raw_amount is None or not str(raw_amount).strip():
+                continue
+            normalized = str(raw_amount).strip().replace(",", ".")
+            try:
+                total += Decimal(normalized)
+            except Exception:
+                continue
+        return total
 
     async def get_by_id(
         self,

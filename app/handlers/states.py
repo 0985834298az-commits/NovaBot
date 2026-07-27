@@ -6,6 +6,7 @@ class TtnWizard(StatesGroup):
 
     order_input = State()
     products_input = State()
+    account_choice = State()
 
 
 class RecipientWizard(StatesGroup):
@@ -18,6 +19,7 @@ class RecipientWizard(StatesGroup):
     edit_warehouse = State()
     ttn_cod = State()
     products_input = State()
+    account_choice = State()
 
 
 class WaybillWizard(StatesGroup):

@@ -10,6 +10,7 @@ def build_waybill_create_fields(
     telegram_user_id: int,
     document: dict[str, Any],
     wizard_data: dict[str, Any],
+    nova_poshta_account_id: int | None = None,
 ) -> dict[str, Any]:
     """Extract persisted waybill fields from a created TTN."""
     recipient_city = wizard_data["recipient_city"]
@@ -31,6 +32,7 @@ def build_waybill_create_fields(
         "cargo_description": str(wizard_data["cargo_description"]),
         "weight": str(wizard_data["weight"]),
         "declared_cost": str(wizard_data["declared_cost"]),
+        "nova_poshta_account_id": nova_poshta_account_id,
     }
 
 

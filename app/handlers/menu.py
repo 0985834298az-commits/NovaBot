@@ -9,9 +9,9 @@ from app.constants import (
     BTN_NP_ACCOUNTS,
     BTN_RECIPIENTS,
     BTN_SETTINGS,
-    MSG_SETTINGS_SOON,
     NP_ACCOUNTS_MENU_BUTTONS,
 )
+from app.handlers.settings import show_settings
 from app.handlers.nova_poshta_accounts import begin_nova_poshta_accounts_list
 from app.handlers.payment_cards import begin_payment_cards_list
 from app.handlers.recipients import begin_recipients_list
@@ -22,6 +22,7 @@ from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRep
 from app.repositories.order_item_repository import OrderItemRepository
 from app.repositories.payment_card_repository import PaymentCardRepository
 from app.repositories.recipient_repository import RecipientRepository
+from app.repositories.user_repository import UserRepository
 from app.repositories.waybill_repository import WaybillRepository
 
 router = Router(name="menu")
@@ -96,10 +97,11 @@ async def handle_nova_poshta_accounts(
 
 
 @router.message(F.text == BTN_SETTINGS)
-async def handle_settings(message: Message, state: FSMContext) -> None:
-    """Placeholder for bot settings."""
+async def handle_settings(
+    message: Message,
+    state: FSMContext,
+    user_repository: UserRepository,
+) -> None:
+    """Show bot settings."""
     await state.clear()
-    await message.answer(
-        MSG_SETTINGS_SOON,
-        reply_markup=build_main_menu_keyboard(),
-    )
+    await show_settings(message, user_repository)

@@ -17,10 +17,12 @@ from app.database.session import (
     init_db,
 )
 from app.handlers import (
+    account_selection_router,
     menu_router,
     nova_poshta_accounts_router,
     payment_cards_router,
     recipients_router,
+    settings_router,
     start_router,
     ttn_router,
     waybills_router,
@@ -49,7 +51,9 @@ def create_dispatcher(
     dispatcher.update.middleware(DatabaseMiddleware(session_factory))
     dispatcher.include_router(start_router)
     dispatcher.include_router(menu_router)
+    dispatcher.include_router(settings_router)
     dispatcher.include_router(nova_poshta_accounts_router)
+    dispatcher.include_router(account_selection_router)
     dispatcher.include_router(payment_cards_router)
     dispatcher.include_router(waybills_router)
     dispatcher.include_router(recipients_router)

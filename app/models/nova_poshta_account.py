@@ -1,8 +1,9 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, String, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.constants import DEFAULT_MONTHLY_COD_LIMIT
 from app.database.base import Base
 
 
@@ -20,6 +21,11 @@ class NovaPoshtaAccount(Base):
     account_name: Mapped[str] = mapped_column(String(255), nullable=False)
     api_key: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    monthly_limit: Mapped[int] = mapped_column(
+        Integer,
+        default=DEFAULT_MONTHLY_COD_LIMIT,
+        nullable=False,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

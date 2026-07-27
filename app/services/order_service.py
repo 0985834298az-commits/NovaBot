@@ -53,6 +53,7 @@ async def create_ttn_with_order_items(
     sender_profile: dict[str, str],
     product_names: list[str],
     api_key: str,
+    nova_poshta_account_id: int | None,
     recipient_repository: RecipientRepository,
     waybill_repository: WaybillRepository,
     order_item_repository: OrderItemRepository,
@@ -77,6 +78,7 @@ async def create_ttn_with_order_items(
             telegram_user_id=telegram_user_id,
             document=document,
             wizard_data=wizard_data,
+            nova_poshta_account_id=nova_poshta_account_id,
         ),
     )
     await order_item_repository.create_items(waybill.id, product_names)

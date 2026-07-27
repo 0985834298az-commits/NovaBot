@@ -42,6 +42,62 @@ async def init_db(engine: AsyncEngine) -> None:
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
         await connection.run_sync(_migrate_payment_cards)
+        await connection.run_sync(_migrate_nova_poshta_accounts)
+        await connection.run_sync(_migrate_users)
+        await connection.run_sync(_migrate_waybills)
+
+
+def _migrate_nova_poshta_accounts(connection) -> None:
+    """Add monthly COD limit to Nova Poshta accounts."""
+    from sqlalchemy import inspect, text
+
+    from app.constants import DEFAULT_MONTHLY_COD_LIMIT
+
+    inspector = inspect(connection)
+    if "nova_poshta_accounts" not in inspector.get_table_names():
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("nova_poshta_accounts")}
+    if "monthly_limit" not in columns:
+        connection.execute(
+            text(
+                "ALTER TABLE nova_poshta_accounts "
+                f"ADD COLUMN monthly_limit INTEGER DEFAULT {DEFAULT_MONTHLY_COD_LIMIT}",
+            ),
+        )
+
+
+def _migrate_users(connection) -> None:
+    """Add user settings columns."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(connection)
+    if "users" not in inspector.get_table_names():
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("users")}
+    if "auto_account_switching" not in columns:
+        connection.execute(
+            text(
+                "ALTER TABLE users "
+                "ADD COLUMN auto_account_switching BOOLEAN DEFAULT 1",
+            ),
+        )
+
+
+def _migrate_waybills(connection) -> None:
+    """Add Nova Poshta account reference to waybills."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(connection)
+    if "waybills" not in inspector.get_table_names():
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("waybills")}
+    if "nova_poshta_account_id" not in columns:
+        connection.execute(
+            text("ALTER TABLE waybills ADD COLUMN nova_poshta_account_id BIGINT"),
+        )
 
 
 def _migrate_payment_cards(connection) -> None:

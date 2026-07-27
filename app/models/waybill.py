@@ -26,6 +26,11 @@ class Waybill(Base):
     warehouse_number: Mapped[str] = mapped_column(String(32), nullable=False)
     warehouse_ref: Mapped[str] = mapped_column(String(36), nullable=False)
     cod_amount: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+    nova_poshta_account_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+        index=True,
+    )
     delivery_cost: Mapped[str | None] = mapped_column(String(32), nullable=True)
     cargo_description: Mapped[str] = mapped_column(String(255), nullable=False)
     weight: Mapped[str] = mapped_column(String(16), nullable=False)

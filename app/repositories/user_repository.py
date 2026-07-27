@@ -31,3 +31,20 @@ class UserRepository:
         if user is None:
             user = await self.create_user(telegram_id)
         return user
+
+    async def get_auto_account_switching(self, telegram_id: int) -> bool:
+        """Return whether automatic NP account switching is enabled."""
+        user = await self.get_or_create_user(telegram_id)
+        return bool(user.auto_account_switching)
+
+    async def set_auto_account_switching(
+        self,
+        telegram_id: int,
+        enabled: bool,
+    ) -> bool:
+        """Enable or disable automatic NP account switching."""
+        user = await self.get_or_create_user(telegram_id)
+        user.auto_account_switching = enabled
+        await self._session.flush()
+        await self._session.refresh(user)
+        return user.auto_account_switching
