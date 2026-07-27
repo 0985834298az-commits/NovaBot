@@ -20,4 +20,9 @@ def validate_card_number(value: str) -> str | None:
 def format_payment_card(card: object) -> str:
     """Format a payment card for Telegram display."""
     indicator = "🟢" if card.is_active else "⚪️"
-    return f"{indicator} {card.owner_name}\n{mask_card_number(card.card_number)}"
+    card_name = getattr(card, "card_name", None) or card.owner_name
+    return (
+        f"{indicator} {card_name}\n"
+        f"{card.owner_name}\n"
+        f"{mask_card_number(card.card_number)}"
+    )

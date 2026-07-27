@@ -6,12 +6,14 @@ from aiogram.types import CallbackQuery, Message
 
 from app.constants import (
     MSG_CARD_ACTIVE_CHANGED,
+    MSG_CARD_ASK_NAME,
     MSG_CARD_ASK_NUMBER,
     MSG_CARD_ASK_OWNER,
     MSG_CARD_DELETE_CONFIRM,
     MSG_CARD_DELETED,
     MSG_CARD_EDIT_NAME,
     MSG_CARD_EDIT_NUMBER,
+    MSG_CARD_EDIT_OWNER,
     MSG_CARD_INVALID_NUMBER,
     MSG_CARD_SAVED,
     MSG_CARD_UPDATED,
@@ -101,9 +103,23 @@ async def handle_payment_card_add_start(
         return
 
     await state.clear()
-    await state.set_state(PaymentCardWizard.add_owner)
+    await state.set_state(PaymentCardWizard.add_name)
     await callback.answer()
-    await callback.message.answer(MSG_CARD_ASK_OWNER)
+    await callback.message.answer(MSG_CARD_ASK_NAME)
+
+
+@router.message(PaymentCardWizard.add_name, F.text)
+async def handle_payment_card_add_name(
+    message: Message,
+    state: FSMContext,
+) -> None:
+    if message.text is None or not message.text.strip():
+        await message.answer(MSG_CARD_ASK_NAME)
+        return
+
+    await state.update_data(card_name=message.text.strip())
+    await state.set_state(PaymentCardWizard.add_owner)
+    await message.answer(MSG_CARD_ASK_OWNER)
 
 
 @router.message(PaymentCardWizard.add_owner, F.text)
@@ -135,7 +151,12 @@ async def handle_payment_card_add_number(
         return
 
     data = await state.get_data()
+    card_name = str(data.get("card_name") or "").strip()
     owner_name = str(data.get("owner_name") or "").strip()
+    if not card_name:
+        await state.set_state(PaymentCardWizard.add_name)
+        await message.answer(MSG_CARD_ASK_NAME)
+        return
     if not owner_name:
         await state.set_state(PaymentCardWizard.add_owner)
         await message.answer(MSG_CARD_ASK_OWNER)
@@ -143,6 +164,7 @@ async def handle_payment_card_add_number(
 
     await payment_card_repository.create_card(
         telegram_user_id=message.from_user.id,
+        card_name=card_name,
         owner_name=owner_name,
         card_number=card_number,
     )
@@ -245,16 +267,27 @@ async def handle_payment_card_edit_start(
         return
 
     await state.clear()
-    await state.set_state(PaymentCardWizard.edit_owner)
+    await state.set_state(PaymentCardWizard.edit_name)
     await state.update_data(card_id=card_id)
     await callback.answer()
     await callback.message.answer(MSG_CARD_EDIT_NAME)
 
 
+@router.message(PaymentCardWizard.edit_name, F.text)
+async def handle_payment_card_edit_name(message: Message, state: FSMContext) -> None:
+    if message.text is None or not message.text.strip():
+        await message.answer(MSG_CARD_EDIT_NAME)
+        return
+
+    await state.update_data(card_name=message.text.strip())
+    await state.set_state(PaymentCardWizard.edit_owner)
+    await message.answer(MSG_CARD_EDIT_OWNER)
+
+
 @router.message(PaymentCardWizard.edit_owner, F.text)
 async def handle_payment_card_edit_owner(message: Message, state: FSMContext) -> None:
     if message.text is None or not message.text.strip():
-        await message.answer(MSG_CARD_EDIT_NAME)
+        await message.answer(MSG_CARD_EDIT_OWNER)
         return
 
     await state.update_data(owner_name=message.text.strip())
@@ -278,8 +311,9 @@ async def handle_payment_card_edit_number(
 
     data = await state.get_data()
     card_id = data.get("card_id")
+    card_name = str(data.get("card_name") or "").strip()
     owner_name = str(data.get("owner_name") or "").strip()
-    if card_id is None or not owner_name:
+    if card_id is None or not card_name or not owner_name:
         await state.clear()
         await message.answer(MSG_CARDS_EMPTY, reply_markup=build_main_menu_keyboard())
         return
@@ -287,6 +321,7 @@ async def handle_payment_card_edit_number(
     updated = await payment_card_repository.update_card(
         int(card_id),
         message.from_user.id,
+        card_name=card_name,
         owner_name=owner_name,
         card_number=card_number,
     )

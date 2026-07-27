@@ -44,7 +44,9 @@ class NovaPoshtaAccountWizard(StatesGroup):
 class PaymentCardWizard(StatesGroup):
     """Payment card management flows."""
 
+    add_name = State()
     add_owner = State()
     add_number = State()
+    edit_name = State()
     edit_owner = State()
     edit_number = State()

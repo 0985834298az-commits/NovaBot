@@ -14,6 +14,7 @@ class PaymentCardRepository:
         self,
         *,
         telegram_user_id: int,
+        card_name: str,
         owner_name: str,
         card_number: str,
         bank_name: str | None = None,
@@ -22,6 +23,7 @@ class PaymentCardRepository:
         existing_cards = await self.get_all_cards(telegram_user_id)
         card = PaymentCard(
             telegram_user_id=telegram_user_id,
+            card_name=card_name.strip(),
             owner_name=owner_name.strip(),
             card_number=card_number,
             bank_name=bank_name.strip() if bank_name else None,
@@ -90,15 +92,17 @@ class PaymentCardRepository:
         card_id: int,
         telegram_user_id: int,
         *,
+        card_name: str,
         owner_name: str,
         card_number: str,
         bank_name: str | None = None,
     ) -> PaymentCard | None:
-        """Update owner name and card number."""
+        """Update card name, owner name, and card number."""
         card = await self.get_by_id(card_id, telegram_user_id)
         if card is None:
             return None
 
+        card.card_name = card_name.strip()
         card.owner_name = owner_name.strip()
         card.card_number = card_number
         if bank_name is not None:

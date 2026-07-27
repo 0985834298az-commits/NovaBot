@@ -41,6 +41,29 @@ async def init_db(engine: AsyncEngine) -> None:
 
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+        await connection.run_sync(_migrate_payment_cards)
+
+
+def _migrate_payment_cards(connection) -> None:
+    """Add v2 payment card columns to existing SQLite databases."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(connection)
+    if "payment_cards" not in inspector.get_table_names():
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("payment_cards")}
+    if "card_name" not in columns:
+        connection.execute(
+            text("ALTER TABLE payment_cards ADD COLUMN card_name VARCHAR(255) DEFAULT ''"),
+        )
+        connection.execute(
+            text(
+                "UPDATE payment_cards "
+                "SET card_name = owner_name "
+                "WHERE card_name IS NULL OR card_name = ''",
+            ),
+        )
 
 
 async def get_session(
