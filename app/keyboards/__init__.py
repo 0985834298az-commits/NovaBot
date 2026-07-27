@@ -13,6 +13,8 @@ from app.keyboards.recipients import (
     build_recipient_search_keyboard,
 )
 
+from app.keyboards.waybills import build_waybill_actions_keyboard
+
 __all__ = (
     "build_main_menu_keyboard",
     "build_payment_card_actions_keyboard",
@@ -22,4 +24,5 @@ __all__ = (
     "build_recipient_delete_keyboard",
     "build_recipient_search_keyboard",
     "build_replace_api_key_keyboard",
+    "build_waybill_actions_keyboard",
 )

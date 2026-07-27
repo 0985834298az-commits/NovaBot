@@ -11,6 +11,7 @@ class TtnWizard(StatesGroup):
     """Single-message TTN creation flow."""
 
     order_input = State()
+    products_input = State()
 
 
 class RecipientWizard(StatesGroup):
@@ -22,6 +23,13 @@ class RecipientWizard(StatesGroup):
     edit_city = State()
     edit_warehouse = State()
     ttn_cod = State()
+    products_input = State()
+
+
+class WaybillWizard(StatesGroup):
+    """Active waybill management flows."""
+
+    edit_products = State()
 
 
 class PaymentCardWizard(StatesGroup):

@@ -7,9 +7,11 @@ from app.constants import (
     ASK_API_KEY_MESSAGE,
     MSG_NO_ACTIVE_PAYMENT_CARD,
     MSG_TTN_ASK_ORDER,
+    MSG_TTN_ASK_PRODUCTS,
     MSG_TTN_CREATE_FAILED,
     MSG_TTN_CREATING,
     MSG_TTN_INVALID_ORDER_FORMAT,
+    MSG_TTN_INVALID_PRODUCTS,
     MSG_TTN_NEED_API_KEY,
     MSG_TTN_PRINT_LINK,
     MSG_TTN_SENDER_NOT_CONFIGURED,
@@ -18,24 +20,25 @@ from app.handlers.states import TtnWizard, WaitingForApiKey
 from app.keyboards import build_main_menu_keyboard
 from app.nova_poshta import NovaPoshtaClient
 from app.nova_poshta.exceptions import NovaPoshtaError
+from app.repositories.order_item_repository import OrderItemRepository
 from app.repositories.payment_card_repository import PaymentCardRepository
 from app.repositories.recipient_repository import RecipientRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.waybill_repository import WaybillRepository
+from app.services.order_service import create_ttn_with_order_items
 from app.services.sender_cache import (
     get_cached_sender_location,
     get_sender_cache_error,
     is_sender_cache_ready,
 )
-from app.services.waybill_service import build_waybill_create_fields
 from app.services.ttn_service import (
+    TtnOrderInput,
     build_print_link,
-    create_internet_document,
-    extract_recipient_save_fields,
     format_ttn_success_message,
     parse_ttn_order_message,
     prepare_wizard_data_from_order,
 )
+from app.utils.order_items import parse_product_lines
 
 router = Router(name="ttn")
 
@@ -92,13 +95,44 @@ async def begin_ttn_wizard(
 async def handle_ttn_order_input(
     message: Message,
     state: FSMContext,
+) -> None:
+    """Parse recipient data and ask for ordered products."""
+    if message.text is None:
+        return
+
+    order = parse_ttn_order_message(message.text)
+    if order is None:
+        await message.answer(MSG_TTN_INVALID_ORDER_FORMAT)
+        return
+
+    await state.update_data(
+        recipient_name=order.recipient_name,
+        recipient_phone=order.recipient_phone,
+        city_query=order.city_query,
+        warehouse_number=order.warehouse_number,
+        cod_amount=order.cod_amount,
+    )
+    await state.set_state(TtnWizard.products_input)
+    await message.answer(MSG_TTN_ASK_PRODUCTS)
+
+
+@router.message(TtnWizard.products_input, F.text)
+async def handle_ttn_products_input(
+    message: Message,
+    state: FSMContext,
     user_repository: UserRepository,
     recipient_repository: RecipientRepository,
     payment_card_repository: PaymentCardRepository,
     waybill_repository: WaybillRepository,
+    order_item_repository: OrderItemRepository,
 ) -> None:
-    """Parse one message and create a TTN immediately."""
+    """Create a TTN after products are received."""
     if message.from_user is None or message.text is None:
+        return
+
+    product_names = parse_product_lines(message.text)
+    if not product_names:
+        await message.answer(MSG_TTN_INVALID_PRODUCTS)
         return
 
     if not is_sender_cache_ready():
@@ -107,11 +141,6 @@ async def handle_ttn_order_input(
             _sender_not_configured_message(),
             reply_markup=build_main_menu_keyboard(),
         )
-        return
-
-    order = parse_ttn_order_message(message.text)
-    if order is None:
-        await message.answer(MSG_TTN_INVALID_ORDER_FORMAT)
         return
 
     api_key = await _get_api_key(user_repository, message.from_user.id)
@@ -132,6 +161,15 @@ async def handle_ttn_order_input(
         )
         return
 
+    data = await state.get_data()
+    order = TtnOrderInput(
+        recipient_name=str(data.get("recipient_name") or ""),
+        recipient_phone=str(data.get("recipient_phone") or ""),
+        city_query=str(data.get("city_query") or ""),
+        warehouse_number=str(data.get("warehouse_number") or ""),
+        cod_amount=str(data.get("cod_amount") or ""),
+    )
+
     await message.answer(MSG_TTN_CREATING)
 
     try:
@@ -142,12 +180,18 @@ async def handle_ttn_order_input(
                 order,
                 sender_location,
             )
-            wizard_data["payment_card_number"] = active_card.card_number
-            document = await create_internet_document(
-                client,
-                wizard_data,
-                sender_profile,
-            )
+        wizard_data["payment_card_number"] = active_card.card_number
+        document, _waybill = await create_ttn_with_order_items(
+            telegram_user_id=message.from_user.id,
+            wizard_data=wizard_data,
+            sender_profile=sender_profile,
+            product_names=product_names,
+            api_key=api_key,
+            recipient_repository=recipient_repository,
+            waybill_repository=waybill_repository,
+            order_item_repository=order_item_repository,
+            save_recipient=True,
+        )
     except NovaPoshtaError as exc:
         logger.error("TTN creation failed for user {}: {}", message.from_user.id, exc)
         await message.answer(MSG_TTN_CREATE_FAILED.format(error=str(exc)))
@@ -156,19 +200,6 @@ async def handle_ttn_order_input(
     ttn_number = str(document.get("IntDocNumber") or "—")
     reference = str(document.get("Ref") or "")
     delivery_cost = document.get("CostOnSite") or document.get("DocumentCost")
-
-    await recipient_repository.save_recipient(
-        telegram_user_id=message.from_user.id,
-        **extract_recipient_save_fields(wizard_data),
-    )
-
-    await waybill_repository.create_waybill(
-        **build_waybill_create_fields(
-            telegram_user_id=message.from_user.id,
-            document=document,
-            wizard_data=wizard_data,
-        ),
-    )
 
     await state.clear()
     await message.answer(

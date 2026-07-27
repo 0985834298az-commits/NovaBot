@@ -79,6 +79,20 @@ class WaybillRepository:
         )
         return list(result.scalars().all())
 
+    async def get_by_id(
+        self,
+        waybill_id: int,
+        telegram_user_id: int,
+    ) -> Waybill | None:
+        """Return a waybill owned by the Telegram user."""
+        result = await self._session.execute(
+            select(Waybill).where(
+                Waybill.id == waybill_id,
+                Waybill.telegram_user_id == telegram_user_id,
+            ),
+        )
+        return result.scalar_one_or_none()
+
     async def update_tracking_status(
         self,
         waybill: Waybill,

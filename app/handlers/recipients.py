@@ -22,8 +22,10 @@ from app.constants import (
     MSG_RECIPIENTS_SEARCH_PROMPT,
     MSG_RECIPIENTS_TRUNCATED,
     MSG_NO_ACTIVE_PAYMENT_CARD,
+    MSG_TTN_ASK_PRODUCTS,
     MSG_TTN_CREATE_FAILED,
     MSG_TTN_CREATING,
+    MSG_TTN_INVALID_PRODUCTS,
     MSG_TTN_NEED_API_KEY,
     MSG_TTN_PRINT_LINK,
     RECIPIENT_SEARCH_THRESHOLD,
@@ -45,16 +47,16 @@ from app.keyboards import (
 from app.models.recipient import Recipient
 from app.nova_poshta import NovaPoshtaClient
 from app.nova_poshta.exceptions import NovaPoshtaError
+from app.repositories.order_item_repository import OrderItemRepository
 from app.repositories.payment_card_repository import PaymentCardRepository
 from app.repositories.recipient_repository import RecipientRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.waybill_repository import WaybillRepository
 from app.services.sender_cache import get_cached_sender_location, is_sender_cache_ready
-from app.services.waybill_service import build_waybill_create_fields
+from app.services.order_service import create_ttn_with_order_items
 from app.services.ttn_service import (
     build_print_link,
     build_wizard_data_from_saved_recipient,
-    create_internet_document,
     fetch_sender_profile,
     format_recipient_card,
     format_ttn_success_message,
@@ -62,6 +64,7 @@ from app.services.ttn_service import (
     parse_declared_cost,
     resolve_recipient_city_and_warehouse,
 )
+from app.utils.order_items import parse_product_lines
 
 router = Router(name="recipients")
 
@@ -207,10 +210,7 @@ async def handle_recipient_create_ttn(
 async def handle_recipient_ttn_cod(
     message: Message,
     state: FSMContext,
-    user_repository: UserRepository,
     recipient_repository: RecipientRepository,
-    payment_card_repository: PaymentCardRepository,
-    waybill_repository: WaybillRepository,
 ) -> None:
     if message.from_user is None or message.text is None:
         return
@@ -223,6 +223,49 @@ async def handle_recipient_ttn_cod(
     data = await state.get_data()
     recipient_id = data.get("recipient_id")
     if recipient_id is None:
+        await state.clear()
+        await message.answer(
+            MSG_RECIPIENTS_EMPTY,
+            reply_markup=build_main_menu_keyboard(),
+        )
+        return
+
+    recipient = await recipient_repository.get_by_id(int(recipient_id), message.from_user.id)
+    if recipient is None:
+        await state.clear()
+        await message.answer(
+            MSG_RECIPIENTS_EMPTY,
+            reply_markup=build_main_menu_keyboard(),
+        )
+        return
+
+    await state.update_data(cod_amount=cod_amount)
+    await state.set_state(RecipientWizard.products_input)
+    await message.answer(MSG_TTN_ASK_PRODUCTS)
+
+
+@router.message(RecipientWizard.products_input, F.text)
+async def handle_recipient_products_input(
+    message: Message,
+    state: FSMContext,
+    user_repository: UserRepository,
+    recipient_repository: RecipientRepository,
+    payment_card_repository: PaymentCardRepository,
+    waybill_repository: WaybillRepository,
+    order_item_repository: OrderItemRepository,
+) -> None:
+    if message.from_user is None or message.text is None:
+        return
+
+    product_names = parse_product_lines(message.text)
+    if not product_names:
+        await message.answer(MSG_TTN_INVALID_PRODUCTS)
+        return
+
+    data = await state.get_data()
+    recipient_id = data.get("recipient_id")
+    cod_amount = data.get("cod_amount")
+    if recipient_id is None or cod_amount is None:
         await state.clear()
         await message.answer(
             MSG_RECIPIENTS_EMPTY,
@@ -263,17 +306,23 @@ async def handle_recipient_ttn_cod(
         sender_location = get_cached_sender_location()
         wizard_data = build_wizard_data_from_saved_recipient(
             recipient,
-            cod_amount,
+            str(cod_amount),
             sender_location,
         )
         wizard_data["payment_card_number"] = active_card.card_number
         async with NovaPoshtaClient(api_key) as client:
             sender_profile = await fetch_sender_profile(client)
-            document = await create_internet_document(
-                client,
-                wizard_data,
-                sender_profile,
-            )
+        document, _waybill = await create_ttn_with_order_items(
+            telegram_user_id=message.from_user.id,
+            wizard_data=wizard_data,
+            sender_profile=sender_profile,
+            product_names=product_names,
+            api_key=api_key,
+            recipient_repository=recipient_repository,
+            waybill_repository=waybill_repository,
+            order_item_repository=order_item_repository,
+            save_recipient=False,
+        )
     except NovaPoshtaError as exc:
         logger.error(
             "TTN creation from recipient failed for user {}: {}",
@@ -286,14 +335,6 @@ async def handle_recipient_ttn_cod(
     ttn_number = str(document.get("IntDocNumber") or "—")
     reference = str(document.get("Ref") or "")
     delivery_cost = document.get("CostOnSite") or document.get("DocumentCost")
-
-    await waybill_repository.create_waybill(
-        **build_waybill_create_fields(
-            telegram_user_id=message.from_user.id,
-            document=document,
-            wizard_data=wizard_data,
-        ),
-    )
 
     await state.clear()
     await message.answer(

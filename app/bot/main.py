@@ -23,6 +23,7 @@ from app.handlers import (
     recipients_router,
     start_router,
     ttn_router,
+    waybills_router,
 )
 from app.services.sender_cache import initialize_sender_cache, resolve_startup_api_key
 from app.services.waybill_tracker import run_waybill_status_checker
@@ -50,6 +51,7 @@ def create_dispatcher(
     dispatcher.include_router(start_router)
     dispatcher.include_router(menu_router)
     dispatcher.include_router(payment_cards_router)
+    dispatcher.include_router(waybills_router)
     dispatcher.include_router(recipients_router)
     dispatcher.include_router(api_key_router)
     dispatcher.include_router(ttn_router)

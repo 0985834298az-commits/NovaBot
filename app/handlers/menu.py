@@ -19,6 +19,7 @@ from app.handlers.waybills import show_active_waybills
 from app.handlers.states import WaitingForApiKey
 from app.handlers.ttn import begin_ttn_wizard
 from app.keyboards import build_main_menu_keyboard, build_replace_api_key_keyboard
+from app.repositories.order_item_repository import OrderItemRepository
 from app.repositories.payment_card_repository import PaymentCardRepository
 from app.repositories.recipient_repository import RecipientRepository
 from app.repositories.waybill_repository import WaybillRepository
@@ -45,10 +46,11 @@ async def handle_my_waybills(
     message: Message,
     state: FSMContext,
     waybill_repository: WaybillRepository,
+    order_item_repository: OrderItemRepository,
 ) -> None:
     """Show active waybills."""
     await state.clear()
-    await show_active_waybills(message, waybill_repository)
+    await show_active_waybills(message, waybill_repository, order_item_repository)
 
 
 @router.message(F.text == BTN_RECIPIENTS)
