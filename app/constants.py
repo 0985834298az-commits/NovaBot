@@ -112,6 +112,17 @@ MSG_SETTINGS_OAUTH_LOGIN_BUSY = (
 MSG_SETTINGS_OAUTH_LOGOUT_OK = "✅ OAuth сесію видалено."
 MSG_SETTINGS_OAUTH_LOGOUT_EMPTY = "ℹ️ Активної OAuth сесії немає."
 
+MSG_OAUTH_NOT_CONFIGURED = (
+    "❌ Не підключено Business Cabinet OAuth.\n\n"
+    "Відкрийте ⚙️ Налаштування → 🔐 Увійти в Кабінет НП "
+    "і завершіть вхід у браузері."
+)
+MSG_OAUTH_REFRESH_FAILED = (
+    "❌ Не вдалося оновити OAuth токен.\n\n"
+    "Відкрийте ⚙️ Налаштування → 🔐 Увійти в Кабінет НП "
+    "і виконайте вхід знову."
+)
+
 CALLBACK_SETTINGS_TOGGLE_AUTO_SWITCH = "settings:toggle_auto_switch"
 CALLBACK_SETTINGS_OAUTH_LOGIN = "settings:oauth:login"
 CALLBACK_SETTINGS_OAUTH_LOGOUT = "settings:oauth:logout"

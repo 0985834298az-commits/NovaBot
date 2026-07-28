@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import MSG_OAUTH_NOT_CONFIGURED, MSG_OAUTH_REFRESH_FAILED
 from app.nova_poshta.exceptions import NovaPoshtaApiError
 from app.nova_poshta.oauth_client import (
     OAuthTokenSet,
@@ -98,12 +99,7 @@ class NpOAuthService:
         """
         stored = await self.load_tokens(telegram_user_id)
         if stored is None:
-            msg = (
-                "Nova Poshta OAuth is not configured for this user. "
-                "Run Business Cabinet OAuth login first "
-                "(tools/oauth_login.py)."
-            )
-            raise NovaPoshtaApiError(msg)
+            raise NovaPoshtaApiError(MSG_OAUTH_NOT_CONFIGURED)
 
         if not needs_refresh(stored.expires_at):
             return stored.access_token
@@ -117,11 +113,7 @@ class NpOAuthService:
             refreshed = await refresh_access_token(stored.refresh_token)
         except ValueError as exc:
             await self.clear_tokens(telegram_user_id)
-            msg = (
-                "Nova Poshta OAuth refresh failed; re-login required. "
-                f"Details: {exc}"
-            )
-            raise NovaPoshtaApiError(msg) from exc
+            raise NovaPoshtaApiError(MSG_OAUTH_REFRESH_FAILED) from exc
 
         saved = await self.save_tokens(telegram_user_id, refreshed)
         return saved.access_token
