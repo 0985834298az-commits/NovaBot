@@ -90,8 +90,9 @@ class NovaPoshtaAccountRepository:
         *,
         account_name: str | None = None,
         api_key: str | None = None,
+        monthly_limit: int | None = None,
     ) -> NovaPoshtaAccount | None:
-        """Update account name and/or API key."""
+        """Update account name, API key, and/or monthly COD limit."""
         account = await self.get_by_id(account_id, telegram_user_id)
         if account is None:
             return None
@@ -100,6 +101,8 @@ class NovaPoshtaAccountRepository:
             account.account_name = account_name.strip()
         if api_key is not None:
             account.api_key = api_key.strip()
+        if monthly_limit is not None:
+            account.monthly_limit = monthly_limit
 
         await self._session.flush()
         await self._session.refresh(account)

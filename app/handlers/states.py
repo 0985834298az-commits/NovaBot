@@ -35,7 +35,7 @@ class NovaPoshtaAccountWizard(StatesGroup):
     add_api_key = State()
     edit_name = State()
     edit_api_key = State()
-
+    edit_monthly_limit = State()
 
 class PaymentCardWizard(StatesGroup):
     """Payment card management flows."""

@@ -14,6 +14,7 @@ from app.constants import (
     CALLBACK_NP_ACCOUNT_DELETE_NO,
     CALLBACK_NP_ACCOUNT_DELETE_YES,
     CALLBACK_NP_ACCOUNT_DETAIL_BACK,
+    CALLBACK_NP_ACCOUNT_EDIT_LIMIT,
     CALLBACK_NP_ACCOUNT_OPEN,
     CALLBACK_NP_ACCOUNT_RENAME,
     MSG_NP_ACCOUNT_ACTIVE_CHANGED,
@@ -21,6 +22,7 @@ from app.constants import (
     MSG_NP_ACCOUNT_DELETE_CONFIRM,
     MSG_NP_ACCOUNT_DELETED,
     MSG_NP_ACCOUNT_DETAIL_HEADER,
+    MSG_NP_ACCOUNT_LIMIT_UPDATED,
     MSG_NP_ACCOUNT_RENAMED,
     MSG_NP_ACCOUNT_SAVED,
     MSG_MAIN_MENU,
@@ -29,7 +31,9 @@ from app.constants import (
     MSG_NP_ACCOUNTS_LIST_HEADER,
     MSG_NP_ASK_ACCOUNT_NAME,
     MSG_NP_ASK_API_KEY,
+    MSG_NP_ASK_MONTHLY_LIMIT,
     MSG_NP_INVALID_API_KEY,
+    MSG_NP_INVALID_MONTHLY_LIMIT,
 )
 from app.handlers.states import NovaPoshtaAccountWizard
 from app.keyboards import (
@@ -402,6 +406,74 @@ async def handle_nova_poshta_account_rename_save(
         return
 
     await message.answer(MSG_NP_ACCOUNT_RENAMED)
+    await show_nova_poshta_account_detail(
+        message,
+        account_repository,
+        waybill_repository,
+        int(account_id),
+        message.from_user.id,
+    )
+
+
+@router.callback_query(F.data.startswith(f"{CALLBACK_NP_ACCOUNT_EDIT_LIMIT}:"))
+async def handle_nova_poshta_account_edit_limit_start(
+    callback: CallbackQuery,
+    state: FSMContext,
+) -> None:
+    if callback.data is None or callback.message is None:
+        return
+
+    account_id = _parse_account_id(callback.data, CALLBACK_NP_ACCOUNT_EDIT_LIMIT)
+    if account_id is None:
+        await callback.answer("Некоректний акаунт", show_alert=True)
+        return
+
+    await state.clear()
+    await state.set_state(NovaPoshtaAccountWizard.edit_monthly_limit)
+    await state.update_data(account_id=account_id)
+    await callback.answer()
+    await callback.message.answer(MSG_NP_ASK_MONTHLY_LIMIT)
+
+
+@router.message(NovaPoshtaAccountWizard.edit_monthly_limit, F.text)
+async def handle_nova_poshta_account_edit_limit_save(
+    message: Message,
+    state: FSMContext,
+    account_repository: NovaPoshtaAccountRepository,
+    waybill_repository: WaybillRepository,
+) -> None:
+    if message.from_user is None or message.text is None:
+        return
+
+    raw = message.text.strip().replace(" ", "").replace(",", "")
+    try:
+        monthly_limit = int(raw)
+    except ValueError:
+        await message.answer(MSG_NP_INVALID_MONTHLY_LIMIT)
+        return
+    if monthly_limit <= 0:
+        await message.answer(MSG_NP_INVALID_MONTHLY_LIMIT)
+        return
+
+    data = await state.get_data()
+    account_id = data.get("account_id")
+    if account_id is None:
+        await state.clear()
+        await message.answer(MSG_NP_ACCOUNTS_EMPTY, reply_markup=build_main_menu_keyboard())
+        return
+
+    updated = await account_repository.update_account(
+        int(account_id),
+        message.from_user.id,
+        monthly_limit=monthly_limit,
+    )
+
+    await state.clear()
+    if updated is None:
+        await message.answer(MSG_NP_ACCOUNTS_EMPTY, reply_markup=build_main_menu_keyboard())
+        return
+
+    await message.answer(MSG_NP_ACCOUNT_LIMIT_UPDATED)
     await show_nova_poshta_account_detail(
         message,
         account_repository,

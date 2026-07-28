@@ -9,6 +9,7 @@ from app.constants import (
     BTN_NP_ACCOUNT_DELETE,
     BTN_NP_ACCOUNT_DELETE_NO,
     BTN_NP_ACCOUNT_DELETE_YES,
+    BTN_NP_ACCOUNT_EDIT_LIMIT,
     BTN_NP_ACCOUNT_OPEN,
     BTN_NP_ACCOUNT_RENAME,
     CALLBACK_NP_ACCOUNT_ACTIVATE,
@@ -19,6 +20,7 @@ from app.constants import (
     CALLBACK_NP_ACCOUNT_DELETE_NO,
     CALLBACK_NP_ACCOUNT_DELETE_YES,
     CALLBACK_NP_ACCOUNT_DETAIL_BACK,
+    CALLBACK_NP_ACCOUNT_EDIT_LIMIT,
     CALLBACK_NP_ACCOUNT_OPEN,
     CALLBACK_NP_ACCOUNT_RENAME,
 )
@@ -40,6 +42,10 @@ def build_nova_poshta_account_detail_keyboard(account_id: int) -> InlineKeyboard
     builder.button(
         text=BTN_NP_ACCOUNT_CHANGE_API,
         callback_data=f"{CALLBACK_NP_ACCOUNT_CHANGE_API}:{account_id}",
+    )
+    builder.button(
+        text=BTN_NP_ACCOUNT_EDIT_LIMIT,
+        callback_data=f"{CALLBACK_NP_ACCOUNT_EDIT_LIMIT}:{account_id}",
     )
     builder.button(
         text=BTN_NP_ACCOUNT_RENAME,
