@@ -2,9 +2,10 @@
 
 Flow:
 1. Payment.initPayout (Nova Poshta API)
-2. GET {Url}&lang=ua (NovaPay iframe session + CSRF cookie)
-3. POST /api/check-otp
-4. POST /api/payout?sid={Id} with {"pan": "..."}
+2. GET {Url}&lang=ua (NovaPay iframe session + CSRF from page)
+3. GET /locales/uk.json (browser does this before check-otp)
+4. POST /api/check-otp
+5. POST /api/payout?sid={Id} with {"pan": "..."}
 """
 
 from __future__ import annotations
@@ -26,13 +27,16 @@ from app.utils.ssl import create_ssl_context
 NOVAPAY_ORIGIN = "https://e-com.novapay.ua"
 CHECK_OTP_URL = f"{NOVAPAY_ORIGIN}/api/check-otp"
 PAYOUT_API_URL = f"{NOVAPAY_ORIGIN}/api/payout"
+LOCALES_UK_URL = f"{NOVAPAY_ORIGIN}/locales/uk.json"
 
+# Observed browser UA on successful check-otp / payout (CDP 2026-07-27).
+_BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/150.0.0.0 Safari/537.36"
+)
 _BROWSER_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/150.0.0.0 Safari/537.36"
-    ),
+    "User-Agent": _BROWSER_UA,
     "Accept": "application/json, text/plain, */*",
     "Accept-Language": "uk-UA,uk;q=0.9",
 }
@@ -89,11 +93,18 @@ def _csrf_from_jar(jar: aiohttp.CookieJar, page_url: str) -> str | None:
 
 
 def _novapay_headers(csrf_token: str) -> dict[str, str]:
+    """Headers observed on successful browser POST /api/check-otp and /api/payout."""
     return {
-        **_BROWSER_HEADERS,
-        "Content-Type": "application/json",
+        "sec-ch-ua-platform": '"Windows"',
         "x-csrf-token": csrf_token,
         "Referer": "",
+        "User-Agent": _BROWSER_UA,
+        "sec-ch-ua": (
+            '"Not;A=Brand";v="8", "Chromium";v="150", '
+            '"Google Chrome";v="150"'
+        ),
+        "Content-Type": "application/json",
+        "sec-ch-ua-mobile": "?0",
     }
 
 
@@ -149,22 +160,37 @@ async def open_iframe_session(
                     break
 
         session_cookie = response.cookies.get("pay-frontend-api-sid")
-        if not csrf_token and session_cookie is None:
+        if not csrf_token:
             jar_cookie = session.cookie_jar.filter_cookies(iframe_url).get(
                 "pay-frontend-api-sid",
             )
-            if jar_cookie is None:
+            if session_cookie is None and jar_cookie is None:
                 msg = "NovaPay iframe session did not provide session or CSRF cookie"
                 raise NovaPoshtaApiError(msg)
-            logger.warning(
-                "NovaPay iframe opened without CSRF cookie "
-                "(pay-frontend-api-sid present); continuing",
+            msg = (
+                "NovaPay iframe opened but window.__CSRF_TOKEN__ was missing; "
+                "POST /api/check-otp would return CorruptedRequestError"
             )
-        elif not csrf_token:
-            logger.warning(
-                "NovaPay iframe opened (session cookie present) without CSRF token",
-            )
-        return csrf_token or ""
+            raise NovaPoshtaApiError(msg)
+        return csrf_token
+
+
+async def _load_locales(session: aiohttp.ClientSession) -> None:
+    """Browser loads /locales/uk.json after the payout page, before check-otp."""
+    logger.info("NovaPay locales GET URL={}", LOCALES_UK_URL)
+    async with session.get(
+        LOCALES_UK_URL,
+        headers={
+            "User-Agent": _BROWSER_UA,
+            "Referer": "",
+        },
+    ) as response:
+        await response.read()
+        logger.info("NovaPay locales GET status={}", response.status)
+        if response.status >= 400:
+            msg = f"NovaPay locales returned HTTP {response.status}"
+            raise NovaPoshtaApiError(msg)
+
 
 async def _call_check_otp(
     session: aiohttp.ClientSession,
@@ -176,13 +202,32 @@ async def _call_check_otp(
         "phone": _check_otp_phone(phone),
         "authorize": {"wallet": True},
     }
+    headers = _novapay_headers(csrf_token)
+    cookies = {
+        name: morsel.value
+        for name, morsel in session.cookie_jar.filter_cookies(NOVAPAY_ORIGIN).items()
+    }
+    logger.debug(
+        "NovaPay check-otp request debug: url={} csrf_token={} body={} "
+        "headers={} cookies={}",
+        CHECK_OTP_URL,
+        csrf_token,
+        json.dumps(body, ensure_ascii=False),
+        json.dumps(headers, ensure_ascii=False),
+        json.dumps(cookies, ensure_ascii=False),
+    )
     logger.info("NovaPay check-otp POST URL={} phone={}", CHECK_OTP_URL, body["phone"])
     async with session.post(
         CHECK_OTP_URL,
         json=body,
-        headers=_novapay_headers(csrf_token),
+        headers=headers,
     ) as response:
         payload = await _read_json(response)
+        logger.debug(
+            "NovaPay check-otp response debug: status={} body={}",
+            response.status,
+            json.dumps(payload, ensure_ascii=False),
+        )
         logger.info(
             "NovaPay check-otp status={} response={}",
             response.status,
@@ -285,6 +330,7 @@ async def register_payout_card(
 
     try:
         csrf_token = await open_iframe_session(session, iframe_url)
+        await _load_locales(session)
         await _call_check_otp(session, csrf_token=csrf_token, phone=phone)
         payout_id, masked_pan = await _call_payout_api(
             session,
@@ -326,6 +372,7 @@ async def register_card_via_payout_iframe(
 
     try:
         csrf_token = await open_iframe_session(session, iframe_url)
+        await _load_locales(session)
         await _call_check_otp(session, csrf_token=csrf_token, phone=phone)
         registered_id, masked_pan = await _call_payout_api(
             session,
