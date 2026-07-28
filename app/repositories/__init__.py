@@ -1,6 +1,7 @@
 """Data access repositories."""
 
 from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRepository
+from app.repositories.np_oauth_token_repository import NpOAuthTokenRepository
 from app.repositories.order_item_repository import OrderItemRepository
 from app.repositories.payment_card_repository import PaymentCardRepository
 from app.repositories.recipient_repository import RecipientRepository
@@ -9,6 +10,7 @@ from app.repositories.waybill_repository import WaybillRepository
 
 __all__ = (
     "NovaPoshtaAccountRepository",
+    "NpOAuthTokenRepository",
     "OrderItemRepository",
     "PaymentCardRepository",
     "RecipientRepository",

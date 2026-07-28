@@ -262,11 +262,27 @@ async def create_internet_document(
         sender_profile,
         recipient_profile,
     )
+    use_cash2card = bool(wizard_data.get("cash2card_save_extras"))
     logger.info(
         "InternetDocument.save payload: {}",
         json.dumps(save_properties, ensure_ascii=False),
     )
-    response = await client.save_internet_document(save_properties)
+    response = await client.save_internet_document(
+        save_properties,
+        use_cash2card=use_cash2card,
+    )
+    if use_cash2card:
+        from app.services.cash2card_service import log_cash2card_block
+
+        log_cash2card_block(
+            entered_pan=str(wizard_data.get("payment_card_number") or ""),
+            payout_id=str(wizard_data.get("cash2card_payout_id") or ""),
+            backward_delivery_data=list(
+                wizard_data.get("cash2card_backward_delivery_data") or [],
+            ),
+            save_payload=save_properties,
+            save_response=response,
+        )
     document = extract_created_document(response)
     logger.info(
         (
@@ -594,23 +610,25 @@ def build_save_properties(
     }
 
     cod_amount = wizard_data.get("cod_amount")
-    payment_card_ref = wizard_data.get("payment_card_ref")
-    payment_card_name = wizard_data.get("payment_card_name")
-    if cod_amount:
-        backward_delivery_item: dict[str, Any] = {
-            "PayerType": "Recipient",
-            "CargoType": "Money",
-            "RedeliveryString": str(cod_amount),
-        }
-        if payment_card_ref:
-            backward_delivery_item["PaymentCard"] = str(payment_card_ref)
-        properties["BackwardDeliveryData"] = [backward_delivery_item]
+    cash2card_backward = wizard_data.get("cash2card_backward_delivery_data")
+    cash2card_extras = wizard_data.get("cash2card_save_extras")
+    if cod_amount and cash2card_backward and cash2card_extras:
+        properties["BackwardDeliveryData"] = list(cash2card_backward)
+        properties.update(dict(cash2card_extras))
         logger.info(
-            "COD payout card: selected_card={} card_ref={} backward_delivery_data={}",
-            payment_card_name,
-            payment_card_ref,
+            "COD Cash2Card payout: payout_id={} masked_pan={} backward_delivery_data={}",
+            wizard_data.get("cash2card_payout_id"),
+            wizard_data.get("cash2card_masked_pan"),
             properties["BackwardDeliveryData"],
         )
+    elif cod_amount:
+        properties["BackwardDeliveryData"] = [
+            {
+                "PayerType": "Recipient",
+                "CargoType": "Money",
+                "RedeliveryString": str(cod_amount),
+            },
+        ]
 
     return properties
 

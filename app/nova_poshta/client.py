@@ -18,7 +18,7 @@ from app.nova_poshta.constants import (
     DOCUMENT_LIST_PAGE_SIZE,
     METHOD_GET_DOCUMENT,
     METHOD_GET_DOCUMENT_LIST,
-    METHOD_GET_PAYMENT_CARDS,
+    METHOD_INIT_PAYOUT,
     METHOD_GET_STATUS,
     METHOD_GET_STATUS_DOCUMENTS,
     METHOD_GET_WAREHOUSES,
@@ -34,6 +34,7 @@ from app.nova_poshta.constants import (
     MODEL_INTERNET_DOCUMENT,
     MODEL_PAYMENT,
     MODEL_TRACKING_DOCUMENT,
+    NP_API_SYSTEM,
     SEARCH_LIMIT,
     SEARCH_PAGE,
 )
@@ -43,7 +44,6 @@ from app.nova_poshta.exceptions import (
     NovaPoshtaResponseError,
     NovaPoshtaTransportError,
 )
-from app.utils.payment_card_diagnostics import log_payment_cards_api_attempt
 from app.utils.ssl import create_ssl_context
 
 
@@ -104,25 +104,25 @@ class NovaPoshtaClient:
             "methodProperties": method_properties or {},
         }
 
-    async def _call(
+    async def _post_json(
         self,
+        payload: dict[str, Any],
+        *,
         model_name: str,
         called_method: str,
-        method_properties: dict[str, Any] | None = None,
+        method_properties: dict[str, Any] | None,
+        headers: dict[str, str] | None = None,
+        auth_mode: str = "apiKey",
     ) -> dict[str, Any]:
-        payload = {
-            "apiKey": self._api_key,
-            "modelName": model_name,
-            "calledMethod": called_method,
-            "methodProperties": method_properties or {},
-        }
-
         session = await self._ensure_session()
         log_payload = self._build_log_payload(
             model_name,
             called_method,
             method_properties,
         )
+        if "system" in payload:
+            log_payload["system"] = payload["system"]
+        log_payload["auth"] = auth_mode
 
         logger.info(
             "Nova Poshta API request JSON: {}",
@@ -130,7 +130,7 @@ class NovaPoshtaClient:
         )
 
         try:
-            async with session.post(API_URL, json=payload) as response:
+            async with session.post(API_URL, json=payload, headers=headers) as response:
                 raw_body = await response.text()
 
                 try:
@@ -160,15 +160,18 @@ class NovaPoshtaClient:
 
                 if data.get("success") is True:
                     logger.info(
-                        "Nova Poshta request succeeded: model={} method={}",
+                        "Nova Poshta request succeeded: model={} method={} auth={}",
                         model_name,
                         called_method,
+                        auth_mode,
                     )
                 else:
                     logger.error(
-                        "Nova Poshta request failed: model={} method={} errors={} response={}",
+                        "Nova Poshta request failed: model={} method={} auth={} "
+                        "errors={} response={}",
                         model_name,
                         called_method,
+                        auth_mode,
                         data.get("errors"),
                         json.dumps(data, ensure_ascii=False),
                     )
@@ -185,6 +188,61 @@ class NovaPoshtaClient:
             msg = f"Nova Poshta API request failed: {exc}"
             logger.error(msg)
             raise NovaPoshtaTransportError(msg) from exc
+
+    async def _call(
+        self,
+        model_name: str,
+        called_method: str,
+        method_properties: dict[str, Any] | None = None,
+        *,
+        system: str | None = None,
+    ) -> dict[str, Any]:
+        """Call the public JSON API authenticated with apiKey (unchanged behavior)."""
+        payload: dict[str, Any] = {
+            "apiKey": self._api_key,
+            "modelName": model_name,
+            "calledMethod": called_method,
+            "methodProperties": method_properties or {},
+        }
+        if system:
+            payload["system"] = system
+        return await self._post_json(
+            payload,
+            model_name=model_name,
+            called_method=called_method,
+            method_properties=method_properties,
+            auth_mode="apiKey",
+        )
+
+    async def _call_with_oauth(
+        self,
+        model_name: str,
+        called_method: str,
+        method_properties: dict[str, Any] | None = None,
+        *,
+        oauth_access_token: str,
+        system: str | None = None,
+    ) -> dict[str, Any]:
+        """Call the JSON API with TokenOAuth2 (no apiKey in body)."""
+        token = oauth_access_token.strip()
+        if not token:
+            msg = "OAuth access_token is required for this Nova Poshta call"
+            raise ValueError(msg)
+        payload: dict[str, Any] = {
+            "modelName": model_name,
+            "calledMethod": called_method,
+            "methodProperties": method_properties or {},
+        }
+        if system:
+            payload["system"] = system
+        return await self._post_json(
+            payload,
+            model_name=model_name,
+            called_method=called_method,
+            method_properties=method_properties,
+            headers={"TokenOAuth2": token},
+            auth_mode="TokenOAuth2",
+        )
 
     async def get_status(self) -> dict[str, Any]:
         """Call Common/getServiceTypes and return parsed JSON."""
@@ -442,44 +500,49 @@ class NovaPoshtaClient:
             {"Ref": document_ref},
         )
 
-    async def get_payment_cards(self, *, api_key_name: str = "") -> dict[str, Any]:
-        """Load payment cards linked to the Nova Poshta account."""
-        response = await self._call(
-            MODEL_PAYMENT,
-            METHOD_GET_PAYMENT_CARDS,
-            {},
-        )
-        log_payment_cards_api_attempt(
-            api_key_name=api_key_name,
-            model_name=MODEL_PAYMENT,
-            called_method=METHOD_GET_PAYMENT_CARDS,
-            response=response,
-        )
-        if response.get("success") is True and response.get("data"):
-            return response
+    async def init_payout(
+        self,
+        *,
+        phone: str,
+        oauth_access_token: str,
+        document_number: str | None = None,
+    ) -> dict[str, Any]:
+        """Start Cash2Card payout registration (Payment.initPayout via TokenOAuth2)."""
+        method_properties: dict[str, Any] = {"Phone": phone.strip()}
+        if document_number:
+            method_properties["Number"] = document_number.strip()
 
-        fallback = await self._call(
+        response = await self._call_with_oauth(
             MODEL_PAYMENT,
-            METHOD_WALLET_MANAGEMENT,
-            {},
+            METHOD_INIT_PAYOUT,
+            method_properties,
+            oauth_access_token=oauth_access_token,
+            system=NP_API_SYSTEM,
         )
-        log_payment_cards_api_attempt(
-            api_key_name=api_key_name,
-            model_name=MODEL_PAYMENT,
-            called_method=METHOD_WALLET_MANAGEMENT,
-            response=fallback,
-        )
-        return fallback
+        if response.get("success") is not True:
+            errors = [str(error) for error in response.get("errors") or []]
+            msg = "; ".join(errors) or "Nova Poshta failed to init Cash2Card payout"
+            raise NovaPoshtaApiError(msg, errors=errors)
+
+        data = response.get("data") or []
+        if not data or not isinstance(data[0], dict):
+            msg = "Payment.initPayout returned an empty payload"
+            raise NovaPoshtaApiError(msg)
+
+        return data[0]
 
     async def save_internet_document(
         self,
         method_properties: dict[str, Any],
+        *,
+        use_cash2card: bool = False,
     ) -> dict[str, Any]:
         """Create an express waybill through InternetDocument.save."""
         response = await self._call(
             MODEL_INTERNET_DOCUMENT,
             METHOD_SAVE,
             method_properties,
+            system=NP_API_SYSTEM if use_cash2card else None,
         )
         if response.get("success") is not True:
             errors = [str(error) for error in response.get("errors") or []]

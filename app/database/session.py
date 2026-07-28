@@ -155,6 +155,47 @@ def _migrate_payment_cards(connection) -> None:
         connection.execute(
             text("ALTER TABLE payment_cards ADD COLUMN imported_at DATETIME"),
         )
+    columns = {column["name"] for column in inspector.get_columns("payment_cards")}
+    if "nova_poshta_account_id" not in columns:
+        connection.execute(
+            text("ALTER TABLE payment_cards ADD COLUMN nova_poshta_account_id BIGINT"),
+        )
+        cards = connection.execute(
+            text("SELECT id, telegram_user_id FROM payment_cards"),
+        ).fetchall()
+        for card_id, telegram_user_id in cards:
+            account_row = connection.execute(
+                text(
+                    "SELECT id FROM nova_poshta_accounts "
+                    "WHERE telegram_user_id = :telegram_user_id "
+                    "AND is_active = 1 "
+                    "ORDER BY id ASC LIMIT 1",
+                ),
+                {"telegram_user_id": telegram_user_id},
+            ).fetchone()
+            if account_row is None:
+                account_row = connection.execute(
+                    text(
+                        "SELECT id FROM nova_poshta_accounts "
+                        "WHERE telegram_user_id = :telegram_user_id "
+                        "ORDER BY id ASC LIMIT 1",
+                    ),
+                    {"telegram_user_id": telegram_user_id},
+                ).fetchone()
+            if account_row is None:
+                connection.execute(
+                    text("DELETE FROM payment_cards WHERE id = :card_id"),
+                    {"card_id": card_id},
+                )
+                continue
+            connection.execute(
+                text(
+                    "UPDATE payment_cards "
+                    "SET nova_poshta_account_id = :account_id "
+                    "WHERE id = :card_id",
+                ),
+                {"account_id": account_row[0], "card_id": card_id},
+            )
 
 
 async def get_session(

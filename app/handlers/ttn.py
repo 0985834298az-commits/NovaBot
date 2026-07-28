@@ -22,7 +22,10 @@ from app.repositories.waybill_repository import WaybillRepository
 from app.services.nova_poshta_account_service import ensure_active_account_sender_cache
 from app.services.payment_card_service import is_active_card_ready
 from app.services.sender_cache import get_sender_cache_error
-from app.services.ttn_creation_flow import process_ttn_account_selection
+from app.services.ttn_creation_flow import (
+    process_ttn_account_selection,
+    resolve_ttn_payment_card,
+)
 from app.services.ttn_service import parse_ttn_order_message
 from app.utils.order_items import parse_product_lines
 
@@ -47,7 +50,20 @@ async def begin_ttn_wizard(
     if message.from_user is None:
         return
 
-    active_card = await payment_card_repository.get_active_card(message.from_user.id)
+    active_account = await nova_poshta_account_repository.get_active_account(message.from_user.id)
+    if active_account is None:
+        await message.answer(
+            MSG_NO_ACTIVE_NP_ACCOUNT,
+            reply_markup=build_main_menu_keyboard(),
+        )
+        return
+
+    active_card, _ = await resolve_ttn_payment_card(
+        telegram_user_id=message.from_user.id,
+        nova_poshta_account_repository=nova_poshta_account_repository,
+        payment_card_repository=payment_card_repository,
+        stage="begin_wizard",
+    )
     if not is_active_card_ready(active_card):
         await message.answer(
             MSG_NO_ACTIVE_PAYMENT_CARD,

@@ -25,6 +25,7 @@ from app.keyboards import (
     build_account_pick_keyboard,
     build_main_menu_keyboard,
 )
+from app.models.payment_card import PaymentCard
 from app.nova_poshta import NovaPoshtaClient
 from app.nova_poshta.exceptions import NovaPoshtaError
 from app.repositories.nova_poshta_account_repository import NovaPoshtaAccountRepository
@@ -44,6 +45,10 @@ from app.services.account_selection_service import (
     resolve_account_for_cod,
 )
 from app.services.nova_poshta_account_service import ensure_active_account_sender_cache
+from app.services.cash2card_service import (
+    apply_cash2card_to_wizard,
+    prepare_cash2card_for_ttn,
+)
 from app.services.order_service import create_ttn_with_order_items
 from app.services.payment_card_service import (
     apply_active_card_to_wizard,
@@ -60,9 +65,120 @@ from app.services.ttn_service import (
     prepare_wizard_data_from_order,
 )
 from app.utils.money import format_money_uah
+from app.utils.payment_card import validate_card_number
 
 PendingTtnSource = Literal["ttn", "recipient"]
 PENDING_TTN_KEY = "pending_ttn"
+
+
+def _format_ttn_active_card(active_card: PaymentCard | None) -> str:
+    if active_card is None:
+        return "None"
+    has_pan = bool(validate_card_number(active_card.card_number))
+    return (
+        f"id={active_card.id} "
+        f"is_active={active_card.is_active} "
+        f"card_account_id={active_card.nova_poshta_account_id} "
+        f"has_pan={has_pan}"
+    )
+
+
+async def resolve_ttn_payment_card(
+    *,
+    telegram_user_id: int,
+    nova_poshta_account_repository: NovaPoshtaAccountRepository,
+    payment_card_repository: PaymentCardRepository,
+    stage: str,
+    expected_account_id: int | None = None,
+) -> tuple[PaymentCard | None, NovaPoshtaAccount | None]:
+    """Resolve the active payment card the same way the Cards menu does."""
+    active_account = await nova_poshta_account_repository.get_active_account(
+        telegram_user_id,
+    )
+
+    if active_account is None:
+        logger.warning(
+            "TTN START stage={} user_id={} account_id=None active_card=None "
+            "reason=no_active_nova_poshta_account",
+            stage,
+            telegram_user_id,
+        )
+        return None, None
+
+    active_card = await payment_card_repository.get_active_card(
+        telegram_user_id,
+        nova_poshta_account_id=active_account.id,
+        nova_poshta_account_name=active_account.account_name,
+    )
+
+    logger.info(
+        "TTN START stage={} user_id={} account_id={} account_name={} active_card={}",
+        stage,
+        telegram_user_id,
+        active_account.id,
+        active_account.account_name,
+        _format_ttn_active_card(active_card),
+    )
+
+    if expected_account_id is not None and expected_account_id != active_account.id:
+        logger.warning(
+            "TTN START stage={} user_id={} account_id={} active_card={} "
+            "reason=account_selection_mismatch expected_account_id={} active_account_id={} "
+            "using active account card",
+            stage,
+            telegram_user_id,
+            active_account.id,
+            _format_ttn_active_card(active_card),
+            expected_account_id,
+            active_account.id,
+        )
+
+    if active_card is None:
+        logger.warning(
+            "TTN START stage={} user_id={} account_id={} active_card=None "
+            "reason=query_returned_nothing",
+            stage,
+            telegram_user_id,
+            active_account.id,
+        )
+        return None, active_account
+
+    if not active_card.is_active:
+        logger.warning(
+            "TTN START stage={} user_id={} account_id={} active_card={} "
+            "reason=active_flag_is_false",
+            stage,
+            telegram_user_id,
+            active_account.id,
+            _format_ttn_active_card(active_card),
+        )
+        return None, active_account
+
+    if active_card.nova_poshta_account_id != active_account.id:
+        logger.warning(
+            "TTN START stage={} user_id={} account_id={} active_card={} "
+            "reason=wrong_account_id card_account_id={} active_account_id={}",
+            stage,
+            telegram_user_id,
+            active_account.id,
+            _format_ttn_active_card(active_card),
+            active_card.nova_poshta_account_id,
+            active_account.id,
+        )
+        return None, active_account
+
+    if validate_card_number(active_card.card_number) is None:
+        logger.warning(
+            "TTN START stage={} user_id={} account_id={} active_card={} "
+            "reason=missing_valid_pan",
+            stage,
+            telegram_user_id,
+            active_account.id,
+            _format_ttn_active_card(active_card),
+        )
+        return None, active_account
+
+    return active_card, active_account
 
 
 def _sender_not_configured_message(telegram_user_id: int) -> str:
@@ -222,8 +338,14 @@ async def _create_ttn_from_pending(
     cod_amount = str(pending.get("cod_amount") or "0")
     source = pending.get("source")
 
-    active_card = await payment_card_repository.get_active_card(message.from_user.id)
-    if not is_active_card_ready(active_card):
+    active_card, active_account = await resolve_ttn_payment_card(
+        telegram_user_id=message.from_user.id,
+        nova_poshta_account_repository=nova_poshta_account_repository,
+        payment_card_repository=payment_card_repository,
+        stage="create_from_pending",
+        expected_account_id=selected_account_id,
+    )
+    if not is_active_card_ready(active_card) or active_account is None:
         await message.answer(
             MSG_NO_ACTIVE_PAYMENT_CARD,
             reply_markup=build_main_menu_keyboard(),
@@ -231,6 +353,15 @@ async def _create_ttn_from_pending(
         return False
 
     assert active_card is not None
+    assert active_account is not None
+
+    if selected_account_id != active_account.id:
+        logger.warning(
+            "TTN create_from_pending account mismatch: selected_account_id={} "
+            "active_account_id={}; using active account for TTN",
+            selected_account_id,
+            active_account.id,
+        )
 
     try:
         prepared = await ensure_active_account_sender_cache(
@@ -290,13 +421,26 @@ async def _create_ttn_from_pending(
             save_recipient = False
 
         apply_active_card_to_wizard(wizard_data, active_card)
+
+        async with NovaPoshtaClient(api_key) as client:
+            cash2card_context = await prepare_cash2card_for_ttn(
+                client,
+                pan=active_card.card_number,
+                sender_phone=sender_profile["phone"],
+                cod_amount=cod_amount,
+                telegram_user_id=message.from_user.id,
+                db_session=nova_poshta_account_repository._session,
+                alias=active_card.card_name,
+            )
+            apply_cash2card_to_wizard(wizard_data, cash2card_context)
+
         document, _waybill = await create_ttn_with_order_items(
             telegram_user_id=message.from_user.id,
             wizard_data=wizard_data,
             sender_profile=sender_profile,
             product_names=product_names,
             api_key=api_key,
-            nova_poshta_account_id=selected_account_id,
+            nova_poshta_account_id=active_account.id,
             recipient_repository=recipient_repository,
             waybill_repository=waybill_repository,
             order_item_repository=order_item_repository,
@@ -349,7 +493,7 @@ async def execute_pending_ttn_creation(
     order_item_repository: OrderItemRepository,
     user_repository: UserRepository,
     account_id: int | None = None,
-    force_current: bool = False,
+    force_current: bool = True,
 ) -> bool:
     """Create a TTN from pending FSM data."""
     if message.from_user is None:
@@ -453,21 +597,13 @@ async def process_ttn_account_selection(
     if message.from_user is None:
         return
 
-    active_card = await payment_card_repository.get_active_card(message.from_user.id)
-    if not is_active_card_ready(active_card):
-        await state.clear()
-        await message.answer(
-            MSG_NO_ACTIVE_PAYMENT_CARD,
-            reply_markup=build_main_menu_keyboard(),
-        )
-        return
-
     outcome = await resolve_account_for_cod(
         account_repository=nova_poshta_account_repository,
         waybill_repository=waybill_repository,
         user_repository=user_repository,
         telegram_user_id=message.from_user.id,
         cod_amount=cod_amount_from_string(cod_amount),
+        force_current=True,
     )
     if outcome is None:
         await state.clear()

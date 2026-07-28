@@ -185,7 +185,19 @@ async def handle_recipient_create_ttn(
     if callback.data is None or callback.message is None or callback.from_user is None:
         return
 
-    active_card = await payment_card_repository.get_active_card(callback.from_user.id)
+    active_account = await nova_poshta_account_repository.get_active_account(
+        callback.from_user.id,
+    )
+    if active_account is None:
+        await callback.answer()
+        await callback.message.answer(MSG_NO_ACTIVE_NP_ACCOUNT)
+        return
+
+    active_card = await payment_card_repository.get_active_card(
+        callback.from_user.id,
+        nova_poshta_account_id=active_account.id,
+        nova_poshta_account_name=active_account.account_name,
+    )
     if not is_active_card_ready(active_card):
         await callback.answer()
         await callback.message.answer(MSG_NO_ACTIVE_PAYMENT_CARD)

@@ -8,7 +8,6 @@ from app.constants import (
     BTN_CARD_DELETE_NO,
     BTN_CARD_DELETE_YES,
     BTN_CARD_EDIT,
-    BTN_CARD_IMPORT,
     BTN_CARD_SELECT,
     CALLBACK_CARD_ADD,
     CALLBACK_CARD_BACK,
@@ -16,7 +15,6 @@ from app.constants import (
     CALLBACK_CARD_DELETE_NO,
     CALLBACK_CARD_DELETE_YES,
     CALLBACK_CARD_EDIT,
-    CALLBACK_CARD_IMPORT,
     CALLBACK_CARD_SELECT,
 )
 
@@ -43,10 +41,9 @@ def build_payment_card_actions_keyboard(card_id: int) -> InlineKeyboardMarkup:
 def build_payment_cards_footer_keyboard() -> InlineKeyboardMarkup:
     """Build footer actions for the payment cards list."""
     builder = InlineKeyboardBuilder()
-    builder.button(text=BTN_CARD_IMPORT, callback_data=CALLBACK_CARD_IMPORT)
     builder.button(text=BTN_CARD_ADD, callback_data=CALLBACK_CARD_ADD)
     builder.button(text=BTN_BACK, callback_data=CALLBACK_CARD_BACK)
-    builder.adjust(1, 2)
+    builder.adjust(1, 1)
     return builder.as_markup()
 
 

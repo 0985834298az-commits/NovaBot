@@ -1,7 +1,5 @@
 """Helpers for payment card display and validation."""
 
-from app.constants import MSG_CARD_REF_AVAILABLE, MSG_CARD_REF_MISSING
-
 
 def mask_card_number(card_number: str) -> str:
     """Mask a card number as 4441 ** ** 3333."""
@@ -24,9 +22,4 @@ def format_payment_card(card: object) -> str:
     indicator = "🟢" if card.is_active else "⚪️"
     card_name = getattr(card, "card_name", None) or getattr(card, "owner_name", "")
     masked_number = getattr(card, "masked_number", None) or mask_card_number(card.card_number)
-    ref_status = (
-        MSG_CARD_REF_AVAILABLE
-        if str(getattr(card, "card_ref", "") or "").strip()
-        else MSG_CARD_REF_MISSING
-    )
-    return f"{indicator} {card_name}\n{masked_number}\n{ref_status}"
+    return f"{indicator} {card_name}\n{masked_number}"

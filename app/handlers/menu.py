@@ -78,9 +78,15 @@ async def handle_payment_cards(
     message: Message,
     state: FSMContext,
     payment_card_repository: PaymentCardRepository,
+    nova_poshta_account_repository: NovaPoshtaAccountRepository,
 ) -> None:
     """Show saved payment cards."""
-    await begin_payment_cards_list(message, state, payment_card_repository)
+    await begin_payment_cards_list(
+        message,
+        state,
+        payment_card_repository,
+        nova_poshta_account_repository,
+    )
 
 
 @router.message(F.text.in_(NP_ACCOUNTS_MENU_BUTTONS))

@@ -5,3 +5,5 @@ python-dotenv>=1.0.1
 loguru>=0.7.2
 certifi>=2024.0.0
 truststore>=0.10.0
+cryptography>=42.0.0
+aiohttp>=3.10.0

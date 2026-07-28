@@ -17,6 +17,11 @@ class PaymentCard(Base):
         index=True,
         nullable=False,
     )
+    nova_poshta_account_id: Mapped[int] = mapped_column(
+        BigInteger,
+        index=True,
+        nullable=False,
+    )
     card_name: Mapped[str] = mapped_column(String(255), nullable=False)
     card_ref: Mapped[str] = mapped_column(String(36), nullable=False, default="")
     masked_number: Mapped[str] = mapped_column(String(32), nullable=False, default="")
