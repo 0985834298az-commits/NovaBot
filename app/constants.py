@@ -86,7 +86,36 @@ MSG_SETTINGS_AUTO_SWITCH_ON = "🟢 Увімкнено"
 MSG_SETTINGS_AUTO_SWITCH_OFF = "⚪️ Вимкнено"
 BTN_SETTINGS_TOGGLE_AUTO_SWITCH = "🔄 Автоматичне перемикання"
 
+MSG_SETTINGS_OAUTH_HEADER = "🔐 Business Cabinet OAuth"
+MSG_SETTINGS_OAUTH_CONNECTED = "🟢 Підключено"
+MSG_SETTINGS_OAUTH_DISCONNECTED = "⚪️ Не підключено"
+MSG_SETTINGS_OAUTH_EXPIRES = "Дійсний до: {expires_at}"
+BTN_SETTINGS_OAUTH_LOGIN = "🔐 Увійти в Кабінет НП"
+BTN_SETTINGS_OAUTH_LOGOUT = "🚪 Вийти з Кабінету НП"
+BTN_SETTINGS_OAUTH_REFRESH = "🔄 Оновити статус OAuth"
+
+MSG_SETTINGS_OAUTH_LOGIN_START = (
+    "🔐 Відкриваю браузер для входу в Business Cabinet.\n\n"
+    "Увійдіть у акаунт Нової Пошти та підтвердіть доступ."
+)
+MSG_SETTINGS_OAUTH_LOGIN_OK = (
+    "✅ OAuth успішно підключено.\n\n"
+    "Дійсний до: {expires_at}"
+)
+MSG_SETTINGS_OAUTH_LOGIN_FAIL = (
+    "❌ Не вдалося виконати OAuth вхід.\n\n"
+    "{error}"
+)
+MSG_SETTINGS_OAUTH_LOGIN_BUSY = (
+    "⏳ Вхід уже виконується. Завершіть його у відкритому вікні браузера."
+)
+MSG_SETTINGS_OAUTH_LOGOUT_OK = "✅ OAuth сесію видалено."
+MSG_SETTINGS_OAUTH_LOGOUT_EMPTY = "ℹ️ Активної OAuth сесії немає."
+
 CALLBACK_SETTINGS_TOGGLE_AUTO_SWITCH = "settings:toggle_auto_switch"
+CALLBACK_SETTINGS_OAUTH_LOGIN = "settings:oauth:login"
+CALLBACK_SETTINGS_OAUTH_LOGOUT = "settings:oauth:logout"
+CALLBACK_SETTINGS_OAUTH_REFRESH = "settings:oauth:refresh"
 
 BTN_ACCOUNT_SEL_CREATE_ANYWAY = "⚠️ Створити на поточному акаунті"
 BTN_ACCOUNT_SEL_SELECT = "🔑 Обрати інший акаунт"

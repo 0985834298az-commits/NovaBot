@@ -1,6 +1,7 @@
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import (
     BTN_CARDS,
@@ -115,7 +116,8 @@ async def handle_settings(
     message: Message,
     state: FSMContext,
     user_repository: UserRepository,
+    session: AsyncSession,
 ) -> None:
     """Show bot settings."""
     await state.clear()
-    await show_settings(message, user_repository)
+    await show_settings(message, user_repository, session)
